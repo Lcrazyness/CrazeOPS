@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 
-const bootStatus = document.getElementById('bootStatus');
-const boot = document.getElementById('boot');
-const app = document.getElementById('app');
+const $ = (id) => document.getElementById(id);
 
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const lerp = (a, b, t) => a + (b - a) * t;
-const rand = (a, b) => a + Math.random() * (b - a);
-const pick = a => a[Math.floor(Math.random() * a.length)];
+const clamp = (v, min, max) =>
+  Math.max(min, Math.min(max, v));
+
+const lerp = (a, b, t) =>
+  a + (b - a) * t;
+
+const rand = (min, max) =>
+  min + Math.random() * (max - min);
+
+const pick = (arr) =>
+  arr[Math.floor(Math.random() * arr.length)];
 
 const SETTINGS_DEFAULT = {
   sensitivity: .8,
@@ -23,145 +28,141 @@ const SETTINGS_DEFAULT = {
 const settings = Object.assign(
   {},
   SETTINGS_DEFAULT,
-  JSON.parse(localStorage.getItem('frontline-settings') || '{}')
+  JSON.parse(
+    localStorage.getItem(
+      'crazeops-settings'
+    ) || '{}'
+  )
 );
 
 const WEAPONS = {
   carbine: {
     name: 'ARC-5 CARBINE',
-    cat: 'primary',
+    category: 'PRIMARY',
+    model: 'carbine',
     damage: 28,
     head: 1.65,
     rate: 720,
     mag: 30,
     reserve: 120,
     reload: 2.0,
-    range: 110,
-    spread: .011,
-    recoil: .015,
-    color: 0x252a2d,
-    model: 'carbine',
-    ads: .12
+    range: 115,
+    spread: .010,
+    recoil: .018
   },
 
   smg: {
     name: 'VEX-9 SMG',
-    cat: 'primary',
+    category: 'PRIMARY',
+    model: 'smg',
     damage: 20,
     head: 1.5,
     rate: 930,
     mag: 36,
     reserve: 144,
-    reload: 1.8,
+    reload: 1.75,
     range: 65,
     spread: .018,
-    recoil: .021,
-    color: 0x25282a,
-    model: 'smg',
-    ads: .10
+    recoil: .022
   },
 
   shotgun: {
     name: 'BRK-12 SHOTGUN',
-    cat: 'primary',
+    category: 'PRIMARY',
+    model: 'shotgun',
     damage: 12,
     head: 1.35,
-    rate: 80,
+    rate: 85,
     mag: 8,
     reserve: 48,
     reload: 2.3,
-    range: 28,
-    spread: .075,
-    recoil: .085,
-    color: 0x2a2624,
-    model: 'shotgun',
-    ads: .16,
+    range: 30,
+    spread: .07,
+    recoil: .08,
     pellets: 8
   },
 
   marksman: {
     name: 'M-41 MARKSMAN',
-    cat: 'primary',
-    damage: 54,
+    category: 'PRIMARY',
+    model: 'marksman',
+    damage: 53,
     head: 1.8,
     rate: 270,
     mag: 12,
     reserve: 60,
-    reload: 2.2,
-    range: 170,
-    spread: .004,
-    recoil: .04,
-    color: 0x25282b,
-    model: 'marksman',
-    ads: .26
+    reload: 2.15,
+    range: 175,
+    spread: .003,
+    recoil: .04
   },
 
   sidearm: {
     name: 'KITE-8 SIDEARM',
-    cat: 'pistol',
+    category: 'PISTOL',
+    model: 'pistol',
     damage: 31,
     head: 1.7,
     rate: 380,
     mag: 15,
     reserve: 60,
-    reload: 1.5,
-    range: 70,
-    spread: .013,
-    recoil: .022,
-    color: 0x222528,
-    model: 'pistol',
-    ads: .1
+    reload: 1.45,
+    range: 72,
+    spread: .012,
+    recoil: .021
   },
 
   burst: {
     name: 'R-16 BURST',
-    cat: 'pistol',
-    damage: 25,
+    category: 'PISTOL',
+    model: 'pistol',
+    damage: 24,
     head: 1.65,
     rate: 700,
     mag: 21,
     reserve: 84,
-    reload: 1.7,
+    reload: 1.65,
     range: 75,
     spread: .012,
-    recoil: .026,
-    color: 0x24292b,
-    model: 'pistol',
-    ads: .11
+    recoil: .025
   }
 };
 
-const kits = [
+const KITS = [
   {
-    name: 'Recon',
+    name: 'RECON',
     primary: 'marksman',
     secondary: 'sidearm',
     tactical: 'flash',
     lethal: 'frag'
   },
+
   {
-    name: 'Assault',
+    name: 'ASSAULT',
     primary: 'carbine',
     secondary: 'sidearm',
     tactical: 'smoke',
     lethal: 'frag'
   },
+
   {
-    name: 'Breach',
+    name: 'BREACH',
     primary: 'shotgun',
     secondary: 'burst',
     tactical: 'stun',
     lethal: 'impact'
   },
+
   {
-    name: 'Runner',
+    name: 'RUNNER',
     primary: 'smg',
     secondary: 'sidearm',
     tactical: 'emp',
     lethal: 'incendiary'
   },
+
   {
-    name: 'Raider',
+    name: 'RAIDER',
     primary: 'carbine',
     secondary: 'burst',
     tactical: 'smoke',
@@ -171,7 +172,12 @@ const kits = [
 
 let selectedKit = 1;
 
+/* =========================================================
+   AUDIO
+========================================================= */
+
 class AudioManager {
+
   constructor() {
     this.ctx = null;
     this.master = null;
@@ -179,78 +185,159 @@ class AudioManager {
   }
 
   init() {
-    if (this.ready) return;
 
-    this.ctx = new (
-      window.AudioContext ||
-      window.webkitAudioContext
-    )();
+    if (this.ready) {
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
 
-    this.master = this.ctx.createGain();
-    this.master.gain.value = settings.master;
-    this.master.connect(this.ctx.destination);
+      return;
+    }
+
+    this.ctx =
+      new (
+        window.AudioContext ||
+        window.webkitAudioContext
+      )();
+
+    this.master =
+      this.ctx.createGain();
+
+    this.master.gain.value =
+      settings.master;
+
+    this.master.connect(
+      this.ctx.destination
+    );
+
     this.ready = true;
   }
 
-  tone(f, d = .05, type = 'square', vol = .05) {
-    if (!this.ready) return;
+  tone(
+    frequency,
+    duration = .05,
+    type = 'square',
+    volume = .04
+  ) {
 
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
+    if (!this.ready) {
+      return;
+    }
 
-    o.type = type;
-    o.frequency.value = f;
+    const osc =
+      this.ctx.createOscillator();
 
-    g.gain.value = vol * settings.master;
+    const gain =
+      this.ctx.createGain();
 
-    o.connect(g).connect(this.master);
+    osc.type = type;
+    osc.frequency.value =
+      frequency;
 
-    o.start();
+    gain.gain.value =
+      volume * settings.master;
 
-    g.gain.exponentialRampToValueAtTime(
+    osc.connect(gain);
+    gain.connect(this.master);
+
+    osc.start();
+
+    gain.gain.exponentialRampToValueAtTime(
       .0001,
-      this.ctx.currentTime + d
+      this.ctx.currentTime + duration
     );
 
-    o.stop(this.ctx.currentTime + d);
+    osc.stop(
+      this.ctx.currentTime + duration
+    );
   }
 
   gun() {
-    this.tone(70, .045, 'sawtooth', .22);
-    this.tone(120, .028, 'square', .08);
+    this.tone(65,.055,'sawtooth',.25);
+    this.tone(125,.03,'square',.09);
   }
 
   hit() {
-    this.tone(1150, .045, 'triangle', .075);
-  }
-
-  head() {
-    this.tone(1500, .05, 'triangle', .11);
-    setTimeout(() => this.tone(
-      900,
-      .05,
+    this.tone(
+      1100,
+      .045,
       'triangle',
       .06
-    ), 28);
+    );
+  }
+
+  headshot() {
+    this.tone(
+      1450,
+      .05,
+      'triangle',
+      .1
+    );
+
+    setTimeout(
+      () =>
+        this.tone(
+          850,
+          .05,
+          'triangle',
+          .05
+        ),
+      20
+    );
   }
 
   reload() {
-    this.tone(240, .1, 'triangle', .08);
-    setTimeout(() => this.tone(
-      420,
+    this.tone(
+      240,
       .08,
       'triangle',
-      .07
-    ), 120);
+      .075
+    );
+
+    setTimeout(
+      () =>
+        this.tone(
+          400,
+          .09,
+          'triangle',
+          .065
+        ),
+      140
+    );
+
+    setTimeout(
+      () =>
+        this.tone(
+          600,
+          .05,
+          'triangle',
+          .04
+        ),
+      320
+    );
   }
 
-  click() {
-    this.tone(180, .035, 'square', .05);
+  dry() {
+    this.tone(
+      175,
+      .035,
+      'square',
+      .045
+    );
+  }
+
+  switchWeapon() {
+    this.tone(
+      480,
+      .045,
+      'sine',
+      .025
+    );
   }
 
   step(metal = false) {
     this.tone(
-      metal ? 190 : 150,
+      metal ? 200 : 145,
       .035,
       'triangle',
       .025
@@ -258,19 +345,58 @@ class AudioManager {
   }
 
   explosion() {
-    this.tone(45, .32, 'sawtooth', .24);
+    this.tone(
+      42,
+      .32,
+      'sawtooth',
+      .22
+    );
+  }
+
+  inspect() {
+    this.tone(
+      520,
+      .07,
+      'sine',
+      .025
+    );
+  }
+
+  melee() {
+    this.tone(
+      110,
+      .12,
+      'sawtooth',
+      .08
+    );
   }
 
   ui() {
-    this.tone(540, .05, 'sine', .03);
+    this.tone(
+      540,
+      .045,
+      'sine',
+      .03
+    );
   }
 }
 
-const audio = new AudioManager();
+const audio =
+  new AudioManager();
+
+/* =========================================================
+   INPUT
+========================================================= */
 
 class InputManager {
+
   constructor() {
-    this.keys = new Set();
+
+    this.keys =
+      new Set();
+
+    this.justPressed =
+      new Set();
 
     this.mouse = {
       dx: 0,
@@ -278,302 +404,545 @@ class InputManager {
       buttons: 0
     };
 
-    this.pointer = false;
-    this.just = new Set();
+    this.pointerLocked = false;
 
-    addEventListener('keydown', e => {
-      if (!this.keys.has(e.code)) {
-        this.just.add(e.code);
+    window.addEventListener(
+      'keydown',
+      e => {
+
+        if (
+          !this.keys.has(e.code)
+        ) {
+          this.justPressed.add(
+            e.code
+          );
+        }
+
+        this.keys.add(
+          e.code
+        );
+
+        if (
+          e.code === 'Space' ||
+          e.code === 'Tab'
+        ) {
+          e.preventDefault();
+        }
       }
+    );
 
-      this.keys.add(e.code);
-
-      if (['Space', 'Tab'].includes(e.code)) {
-        e.preventDefault();
+    window.addEventListener(
+      'keyup',
+      e => {
+        this.keys.delete(
+          e.code
+        );
       }
-    });
+    );
 
-    addEventListener('keyup', e => {
-      this.keys.delete(e.code);
-    });
+    window.addEventListener(
+      'mousemove',
+      e => {
 
-    addEventListener('mousemove', e => {
-      if (this.pointer) {
-        this.mouse.dx += e.movementX;
-        this.mouse.dy += e.movementY;
+        if (
+          this.pointerLocked
+        ) {
+
+          this.mouse.dx +=
+            e.movementX;
+
+          this.mouse.dy +=
+            e.movementY;
+        }
       }
-    });
+    );
 
-    addEventListener('mousedown', e => {
-      this.mouse.buttons |= (1 << e.button);
+    window.addEventListener(
+      'mousedown',
+      e => {
 
-      if (e.button === 0) {
         audio.init();
+
+        this.mouse.buttons |=
+          1 << e.button;
       }
-    });
+    );
 
-    addEventListener('mouseup', e => {
-      this.mouse.buttons &= ~(1 << e.button);
-    });
+    window.addEventListener(
+      'mouseup',
+      e => {
 
-    addEventListener('contextmenu', e => {
-      e.preventDefault();
-    });
+        this.mouse.buttons &=
+          ~(1 << e.button);
+      }
+    );
 
-    addEventListener('pointerlockchange', () => {
-      this.pointer =
-        document.pointerLockElement === document.body;
-    });
+    window.addEventListener(
+      'contextmenu',
+      e =>
+        e.preventDefault()
+    );
+
+    document.addEventListener(
+      'pointerlockchange',
+      () => {
+
+        this.pointerLocked =
+          document.pointerLockElement ===
+          document.body;
+
+        if (
+          game &&
+          game.running
+        ) {
+
+          $('capture')
+            .classList.toggle(
+              'hidden',
+              this.pointerLocked
+            );
+
+          if (
+            !this.pointerLocked &&
+            !game.paused &&
+            $('death').classList.contains('hidden')
+          ) {
+            $('capture').classList.remove(
+              'hidden'
+            );
+          }
+        }
+      }
+    );
   }
 
-  down(c) {
-    return this.keys.has(c);
+  down(code) {
+    return this.keys.has(
+      code
+    );
   }
 
-  pressed(c) {
-    return this.just.has(c);
+  pressed(code) {
+    return this.justPressed.has(
+      code
+    );
   }
 
-  consume() {
-    this.just.clear();
+  clearFrame() {
+
+    this.justPressed.clear();
+
     this.mouse.dx = 0;
     this.mouse.dy = 0;
   }
 
   lock() {
+
+    audio.init();
+
     document.body.requestPointerLock?.();
   }
 
   unlock() {
+
     document.exitPointerLock?.();
   }
 }
 
-const input = new InputManager();
+const input =
+  new InputManager();
 
-class ModelFactory {
-  static mat(color, rough = .5, metal = .2) {
+/* =========================================================
+   MATERIALS / PROCEDURAL MODELING
+========================================================= */
+
+class Models {
+
+  static material(
+    color,
+    roughness = .5,
+    metalness = .2
+  ) {
+
     return new THREE.MeshStandardMaterial({
       color,
-      roughness: rough,
-      metalness: metal
+      roughness,
+      metalness
     });
   }
 
   static box(
-    w,
-    h,
-    d,
+    width,
+    height,
+    depth,
     color,
-    rough = .5,
-    metal = .2
+    roughness = .5,
+    metalness = .2
   ) {
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      this.mat(color, rough, metal)
-    );
 
-    m.castShadow = true;
-    m.receiveShadow = true;
+    const mesh =
+      new THREE.Mesh(
+        new THREE.BoxGeometry(
+          width,
+          height,
+          depth
+        ),
+        this.material(
+          color,
+          roughness,
+          metalness
+        )
+      );
 
-    return m;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return mesh;
   }
 
-  static cyl(
-    r1,
-    r2,
-    h,
+  static cylinder(
+    radiusTop,
+    radiusBottom,
+    height,
     color,
-    rough = .5,
-    metal = .2,
-    seg = 16
+    roughness = .5,
+    metalness = .2,
+    segments = 16
   ) {
-    const m = new THREE.Mesh(
-      new THREE.CylinderGeometry(
-        r1,
-        r2,
-        h,
-        seg
-      ),
-      this.mat(color, rough, metal)
-    );
 
-    m.castShadow = true;
-    m.receiveShadow = true;
+    const mesh =
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(
+          radiusTop,
+          radiusBottom,
+          height,
+          segments
+        ),
+        this.material(
+          color,
+          roughness,
+          metalness
+        )
+      );
 
-    return m;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    return mesh;
   }
 
-  static weapon(type) {
-    const g = new THREE.Group();
+  static humanArms() {
 
-    const dark = 0x1b2022;
-    const rubber = 0x121516;
-    const metal = 0x6d7376;
+    const root =
+      new THREE.Group();
+
+    const fabric =
+      this.material(
+        0x343b3d,
+        .84,
+        .02
+      );
+
+    const glove =
+      this.material(
+        0x141819,
+        .8,
+        .1
+      );
+
+    const leftArm =
+      new THREE.Mesh(
+        new THREE.CapsuleGeometry(
+          .09,
+          .42,
+          7,
+          10
+        ),
+        fabric
+      );
+
+    const rightArm =
+      new THREE.Mesh(
+        new THREE.CapsuleGeometry(
+          .09,
+          .42,
+          7,
+          10
+        ),
+        fabric
+      );
+
+    leftArm.position.set(
+      -.27,
+      -.15,
+      -.08
+    );
+
+    rightArm.position.set(
+      .27,
+      -.15,
+      -.08
+    );
+
+    leftArm.rotation.z =
+      -.12;
+
+    rightArm.rotation.z =
+      .12;
+
+    root.add(
+      leftArm,
+      rightArm
+    );
+
+    const leftGlove =
+      new THREE.Mesh(
+        new THREE.SphereGeometry(
+          .11,
+          14,
+          10
+        ),
+        glove
+      );
+
+    const rightGlove =
+      new THREE.Mesh(
+        new THREE.SphereGeometry(
+          .11,
+          14,
+          10
+        ),
+        glove
+      );
+
+    leftGlove.position.set(
+      -.25,
+      -.37,
+      -.18
+    );
+
+    rightGlove.position.set(
+      .25,
+      -.37,
+      -.18
+    );
+
+    root.add(
+      leftGlove,
+      rightGlove
+    );
+
+    return root;
+  }
+
+  static weapon(
+    type
+  ) {
+
+    const g =
+      new THREE.Group();
+
+    const dark = 0x1c2224;
+    const metal = 0x717a7e;
+    const rubber = 0x111415;
 
     if (
       type === 'carbine' ||
       type === 'smg' ||
       type === 'marksman'
     ) {
-      const body = this.box(
-        type === 'smg' ? .32 : .38,
-        .22,
-        type === 'marksman' ? 1.25 : 1.05,
-        dark,
-        .34,
-        .55
+
+      const receiver =
+        this.box(
+          type === 'smg'
+            ? .30
+            : .36,
+          .22,
+          type === 'marksman'
+            ? 1.22
+            : 1.02,
+          dark,
+          .34,
+          .6
+        );
+
+      receiver.position.z =
+        -.5;
+
+      g.add(receiver);
+
+      const upper =
+        this.box(
+          .22,
+          .07,
+          .72,
+          metal,
+          .28,
+          .78
+        );
+
+      upper.position.set(
+        0,
+        .13,
+        -.45
       );
 
-      body.position.z = -.55;
-      g.add(body);
+      g.add(upper);
 
-      const top = this.box(
-        .22,
-        .08,
-        .7,
-        metal,
-        .3,
-        .75
+      const barrel =
+        this.cylinder(
+          .047,
+          .04,
+          type === 'marksman'
+            ? 1.08
+            : .7,
+          metal,
+          .23,
+          .9,
+          14
+        );
+
+      barrel.rotation.x =
+        Math.PI / 2;
+
+      barrel.position.set(
+        0,
+        .05,
+        -1.25
       );
 
-      top.position.y = .13;
-      top.position.z = -.48;
-      g.add(top);
-
-      const barrel = this.cyl(
-        .055,
-        .045,
-        type === 'marksman' ? 1.05 : .68,
-        metal,
-        .25,
-        .9,
-        14
-      );
-
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, .06, -1.32);
       g.add(barrel);
 
-      const stock = this.box(
-        .18,
-        .2,
-        .45,
-        rubber,
-        .85,
-        .05
+      const grip =
+        this.box(
+          .15,
+          .34,
+          .15,
+          rubber,
+          .9,
+          .02
+        );
+
+      grip.rotation.x =
+        -.18;
+
+      grip.position.set(
+        0,
+        -.20,
+        -.08
       );
 
-      stock.position.set(0, .02, .12);
-      g.add(stock);
-
-      const grip = this.box(
-        .16,
-        .36,
-        .16,
-        rubber,
-        .9,
-        .03
-      );
-
-      grip.rotation.x = -.18;
-      grip.position.set(0, -.2, -.1);
       g.add(grip);
 
-      const mag = this.box(
-        type === 'smg' ? .17 : .2,
-        .48,
-        .18,
-        0x22282a,
-        .72,
-        .15
+      const magazine =
+        this.box(
+          type === 'smg'
+            ? .17
+            : .20,
+          .45,
+          .17,
+          0x272d2f,
+          .72,
+          .18
+        );
+
+      magazine.rotation.x =
+        type === 'smg'
+          ? .26
+          : -.04;
+
+      magazine.position.set(
+        0,
+        -.27,
+        -.30
       );
 
-      mag.rotation.x =
-        type === 'smg' ? .3 : -.06;
+      g.add(magazine);
 
-      mag.position.set(0, -.28, -.28);
-      g.add(mag);
+      const stock =
+        this.box(
+          .19,
+          .19,
+          .44,
+          rubber,
+          .88,
+          .03
+        );
 
-      if (type !== 'smg') {
-        const rail = this.box(
+      stock.position.z =
+        .10;
+
+      g.add(stock);
+
+      const rail =
+        this.box(
           .08,
-          .06,
-          .48,
+          .05,
+          .46,
           metal,
           .4,
           .7
         );
 
-        rail.position.set(
-          0,
-          .21,
-          -.42
-        );
-
-        g.add(rail);
-      }
-
-      const sight = this.box(
-        .1,
-        .13,
-        .18,
-        0x090b0c,
-        .7,
-        .1
+      rail.position.set(
+        0,
+        .205,
+        -.37
       );
 
-      sight.position.set(
+      g.add(rail);
+
+      const optic =
+        this.box(
+          .09,
+          .12,
+          .17,
+          0x090b0c,
+          .7,
+          .05
+        );
+
+      optic.position.set(
         0,
-        .26,
+        .29,
         -.28
       );
 
-      g.add(sight);
+      g.add(optic);
 
-    } else if (type === 'shotgun') {
-      const body = this.box(
-        .34,
-        .24,
-        1.15,
-        dark,
-        .38,
-        .55
-      );
+    } else if (
+      type === 'shotgun'
+    ) {
 
-      body.position.z = -.46;
-      g.add(body);
+      const receiver =
+        this.box(
+          .35,
+          .24,
+          1.12,
+          dark,
+          .35,
+          .55
+        );
 
-      const tube = this.cyl(
-        .045,
-        .05,
-        1.05,
-        metal,
-        .2,
-        .9,
-        14
-      );
+      receiver.position.z =
+        -.46;
 
-      tube.rotation.x = Math.PI / 2;
-      tube.position.set(
-        -.08,
-        .02,
-        -1.18
-      );
+      g.add(receiver);
 
-      g.add(tube);
+      const barrel =
+        this.cylinder(
+          .055,
+          .06,
+          1.12,
+          metal,
+          .2,
+          .86,
+          14
+        );
 
-      const barrel = this.cyl(
-        .055,
-        .06,
-        1.12,
-        metal,
-        .2,
-        .8,
-        14
-      );
+      barrel.rotation.x =
+        Math.PI / 2;
 
-      barrel.rotation.x = Math.PI / 2;
       barrel.position.set(
         .08,
         .03,
@@ -582,44 +951,52 @@ class ModelFactory {
 
       g.add(barrel);
 
-      const stock = this.box(
-        .19,
-        .23,
-        .55,
-        rubber,
-        .9,
-        .02
+      const tube =
+        this.cylinder(
+          .043,
+          .045,
+          1.04,
+          metal,
+          .22,
+          .84,
+          14
+        );
+
+      tube.rotation.x =
+        Math.PI / 2;
+
+      tube.position.set(
+        -.07,
+        -.01,
+        -1.16
       );
 
-      stock.position.z = .25;
+      g.add(tube);
+
+      const stock =
+        this.box(
+          .19,
+          .23,
+          .52,
+          rubber,
+          .9,
+          .02
+        );
+
+      stock.position.z =
+        .25;
+
       g.add(stock);
 
-      const grip = this.box(
-        .15,
-        .34,
-        .17,
-        rubber,
-        .9,
-        .03
-      );
-
-      grip.rotation.x = -.2;
-      grip.position.set(
-        0,
-        -.18,
-        -.15
-      );
-
-      g.add(grip);
-
-      const pump = this.box(
-        .27,
-        .13,
-        .35,
-        0x303436,
-        .55,
-        .2
-      );
+      const pump =
+        this.box(
+          .25,
+          .12,
+          .34,
+          0x303537,
+          .58,
+          .2
+        );
 
       pump.position.set(
         0,
@@ -629,61 +1006,97 @@ class ModelFactory {
 
       g.add(pump);
 
-    } else {
-      const body = this.box(
-        .27,
-        .18,
-        .7,
-        dark,
-        .34,
-        .55
+      const grip =
+        this.box(
+          .15,
+          .34,
+          .17,
+          rubber,
+          .9,
+          .03
+        );
+
+      grip.rotation.x =
+        -.2;
+
+      grip.position.set(
+        0,
+        -.19,
+        -.15
       );
 
-      body.position.z = -.3;
+      g.add(grip);
+
+    } else {
+
+      const body =
+        this.box(
+          .27,
+          .18,
+          .69,
+          dark,
+          .34,
+          .56
+        );
+
+      body.position.z =
+        -.3;
+
       g.add(body);
 
-      const slide = this.box(
-        .23,
-        .11,
-        .5,
-        metal,
-        .25,
-        .75
+      const slide =
+        this.box(
+          .23,
+          .11,
+          .50,
+          metal,
+          .25,
+          .75
+        );
+
+      slide.position.set(
+        0,
+        .10,
+        -.31
       );
 
-      slide.position.y = .1;
-      slide.position.z = -.31;
       g.add(slide);
 
-      const barrel = this.cyl(
-        .04,
-        .04,
-        .36,
-        metal,
-        .25,
-        .8,
-        12
-      );
+      const barrel =
+        this.cylinder(
+          .04,
+          .04,
+          .36,
+          metal,
+          .25,
+          .82,
+          12
+        );
 
-      barrel.rotation.x = Math.PI / 2;
+      barrel.rotation.x =
+        Math.PI / 2;
+
       barrel.position.set(
         0,
         .05,
-        -.76
+        -.75
       );
 
       g.add(barrel);
 
-      const grip = this.box(
-        .16,
-        .4,
-        .2,
-        rubber,
-        .9,
-        .02
-      );
+      const grip =
+        this.box(
+          .16,
+          .40,
+          .19,
+          rubber,
+          .9,
+          .02
+        );
 
-      grip.rotation.x = -.16;
+      grip.rotation.x =
+        -.16;
+
       grip.position.set(
         0,
         -.22,
@@ -691,507 +1104,423 @@ class ModelFactory {
       );
 
       g.add(grip);
-
-      if (type === 'pistol') {
-        const sight = this.box(
-          .06,
-          .08,
-          .12,
-          0x0b0d0e,
-          .6,
-          .05
-        );
-
-        sight.position.set(
-          0,
-          .19,
-          -.2
-        );
-
-        g.add(sight);
-      }
     }
 
     return g;
   }
 
   static knife() {
-    const g = new THREE.Group();
 
-    const grip = this.cyl(
-      .045,
-      .045,
-      .28,
-      0x171b1c,
-      .9,
-      .03,
-      12
-    );
+    const g =
+      new THREE.Group();
 
-    grip.rotation.x = Math.PI / 2;
-    grip.position.z = .08;
+    const grip =
+      this.cylinder(
+        .045,
+        .045,
+        .28,
+        0x171b1c,
+        .9,
+        .02,
+        12
+      );
+
+    grip.rotation.x =
+      Math.PI / 2;
+
+    grip.position.z =
+      .08;
+
     g.add(grip);
 
-    const guard = this.box(
-      .22,
-      .04,
-      .08,
-      0x343a3c,
-      .45,
-      .5
-    );
+    const guard =
+      this.box(
+        .22,
+        .04,
+        .08,
+        0x343a3c,
+        .4,
+        .5
+      );
 
-    guard.position.z = -.06;
+    guard.position.z =
+      -.06;
+
     g.add(guard);
 
-    const blade = this.box(
-      .06,
-      .08,
-      .58,
-      0x9da4a7,
-      .18,
-      .8
-    );
+    const blade =
+      this.box(
+        .06,
+        .08,
+        .58,
+        0x9ba4a7,
+        .17,
+        .86
+      );
 
-    blade.position.z = -.35;
-    blade.rotation.x = Math.PI / 40;
+    blade.position.z =
+      -.36;
+
     g.add(blade);
 
     return g;
   }
 
-  static grenade(type) {
-    const g = new THREE.Group();
+  static grenade(
+    type
+  ) {
 
-    const body = this.cyl(
-      .14,
-      .14,
-      .33,
+    const g =
+      new THREE.Group();
+
+    const color =
       type === 'flash'
-        ? 0xb3b7b9
-        : 0x2f3834,
-      .6,
-      .25,
-      18
-    );
+        ? 0xb7bec0
+        : 0x2f3934;
+
+    const body =
+      this.cylinder(
+        .14,
+        .14,
+        .33,
+        color,
+        .62,
+        .25,
+        18
+      );
 
     g.add(body);
 
-    const cap = this.cyl(
-      .08,
-      .08,
-      .07,
-      0x575f61,
-      .5,
-      .45,
-      12
-    );
-
-    cap.position.y = .2;
-    g.add(cap);
-
-    const pin = this.cyl(
-      .015,
-      .015,
-      .14,
-      0x8b9496,
-      .3,
-      .5,
-      8
-    );
-
-    pin.position.set(
-      .07,
-      .23,
-      0
-    );
-
-    pin.rotation.z = Math.PI / 2;
-
-    g.add(pin);
-
-    return g;
-  }
-
-  static character(team = 0) {
-    const g = new THREE.Group();
-
-    const skin = this.mat(
-      0x8c5d42,
-      .95,
-      0
-    );
-
-    const fabric = this.mat(
-      team ? 0x3f4748 : 0x52493d,
-      .85,
-      .02
-    );
-
-    const vest = this.mat(
-      0x202628,
-      .7,
-      .1
-    );
-
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(
-        .22,
-        20,
-        16
-      ),
-      skin
-    );
-
-    head.position.y = 1.72;
-    head.castShadow = true;
-    g.add(head);
-
-    const neck = this.cyl(
-      .09,
-      .1,
-      .12,
-      skin
-    );
-
-    neck.position.y = 1.48;
-    g.add(neck);
-
-    const torso = new THREE.Mesh(
-      new THREE.CapsuleGeometry(
-        .28,
-        .62,
-        7,
-        12
-      ),
-      fabric
-    );
-
-    torso.position.y = 1.1;
-    torso.castShadow = true;
-    g.add(torso);
-
-    const vestM = this.box(
-      .42,
-      .5,
-      .24,
-      0x242a2c,
-      .72,
-      .12
-    );
-
-    vestM.position.set(
-      0,
-      1.13,
-      -.03
-    );
-
-    g.add(vestM);
-
-    for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(
-        new THREE.CapsuleGeometry(
-          .10,
-          .48,
-          5,
-          10
-        ),
-        fabric
-      );
-
-      arm.position.set(
-        s * .4,
-        1.15,
-        0
-      );
-
-      arm.rotation.z = s * .12;
-      arm.castShadow = true;
-      g.add(arm);
-
-      const leg = new THREE.Mesh(
-        new THREE.CapsuleGeometry(
-          .12,
-          .58,
-          5,
-          10
-        ),
-        fabric
-      );
-
-      leg.position.set(
-        s * .14,
+    const cap =
+      this.cylinder(
+        .08,
+        .08,
+        .07,
+        0x5c6365,
         .5,
-        0
+        .48,
+        12
       );
 
-      leg.castShadow = true;
-      g.add(leg);
+    cap.position.y =
+      .20;
 
-      const boot = this.box(
-        .18,
-        .12,
-        .3,
-        0x15191a,
-        .9,
-        .05
-      );
-
-      boot.position.set(
-        s * .14,
-        .12,
-        -.05
-      );
-
-      g.add(boot);
-    }
+    g.add(cap);
 
     return g;
   }
 }
 
+/* =========================================================
+   MAP
+========================================================= */
+
 class MapManager {
+
   constructor(scene) {
+
     this.scene = scene;
     this.colliders = [];
-    this.spawn = [];
-    this.decor = [];
+    this.spawns = [];
 
     this.build();
   }
 
-  addBox(
+  box(
     size,
-    pos,
+    position,
     color,
     solid = true
   ) {
-    const m = ModelFactory.box(
-      ...size,
-      color,
-      .8,
-      .05
+
+    const mesh =
+      Models.box(
+        size[0],
+        size[1],
+        size[2],
+        color,
+        .82,
+        .05
+      );
+
+    mesh.position.set(
+      ...position
     );
 
-    m.position.set(...pos);
-    this.scene.add(m);
+    this.scene.add(mesh);
 
     if (solid) {
+
       this.colliders.push({
-        min: new THREE.Vector3(
-          pos[0] - size[0] / 2,
-          pos[1] - size[1] / 2,
-          pos[2] - size[2] / 2
-        ),
+        min:
+          new THREE.Vector3(
+            position[0] -
+              size[0] / 2,
+            position[1] -
+              size[1] / 2,
+            position[2] -
+              size[2] / 2
+          ),
 
-        max: new THREE.Vector3(
-          pos[0] + size[0] / 2,
-          pos[1] + size[1] / 2,
-          pos[2] + size[2] / 2
-        ),
+        max:
+          new THREE.Vector3(
+            position[0] +
+              size[0] / 2,
+            position[1] +
+              size[1] / 2,
+            position[2] +
+              size[2] / 2
+          ),
 
-        mesh: m
+        mesh
       });
     }
 
-    return m;
+    return mesh;
   }
 
   build() {
-    const floor = this.addBox(
-      [86, 1, 86],
-      [0, -.5, 0],
-      0x51575a,
-      true
-    );
+
+    const floor =
+      this.box(
+        [86,1,86],
+        [0,-.5,0],
+        0x555c5f,
+        true
+      );
 
     floor.material =
       new THREE.MeshStandardMaterial({
-        color: 0x51575a,
-        roughness: .92,
-        metalness: .03
+        color:0x555c5f,
+        roughness:.95,
+        metalness:.03
       });
 
-    for (
-      let x = -40;
-      x <= 40;
-      x += 8
-    ) {
-      for (
-        let z = -40;
-        z <= 40;
-        z += 8
-      ) {
-        const tile = this.addBox(
-          [.03, .015, 7.95],
-          [x, 0, z],
-          0x646a6d,
-          false
-        );
+    const boundaries = [
 
-        tile.material =
-          new THREE.MeshStandardMaterial({
-            color: 0x646a6d,
-            roughness: 1
-          });
-      }
-    }
+      [[86,5,1],[0,2.5,-43]],
+      [[86,5,1],[0,2.5,43]],
+      [[1,5,86],[-43,2.5,0]],
+      [[1,5,86],[43,2.5,0]],
 
-    const walls = [
-      [[86,5,1], [0,2.5,-43]],
-      [[86,5,1], [0,2.5,43]],
-      [[1,5,86], [-43,2.5,0]],
-      [[1,5,86], [43,2.5,0]],
-
-      [[12,3,7], [-20,1.5,-14]],
-      [[8,3,16], [18,1.5,-16]],
-      [[12,3,7], [18,1.5,17]],
-      [[18,3,5], [-18,1.5,21]],
-      [[5,3,14], [2,1.5,2]],
-      [[12,3,5], [-12,1.5,-2]],
-      [[5,3,11], [30,1.5,0]],
-      [[10,3,4], [-31,1.5,4]]
+      [[12,3,7],[-20,1.5,-14]],
+      [[8,3,16],[18,1.5,-16]],
+      [[12,3,7],[18,1.5,17]],
+      [[18,3,5],[-18,1.5,21]],
+      [[5,3,14],[2,1.5,2]],
+      [[12,3,5],[-12,1.5,-2]],
+      [[5,3,11],[30,1.5,0]],
+      [[10,3,4],[-31,1.5,4]]
     ];
 
-    walls.forEach(([s, p]) => {
-      this.addBox(
-        s,
-        p,
-        0x30373a,
-        true
-      );
-    });
+    boundaries.forEach(
+      ([size,pos]) =>
+        this.box(
+          size,
+          pos,
+          0x30373a,
+          true
+        )
+    );
 
     const containers = [
-      [-27,1.3,-29,10,2.6,3,0x6b4f34],
-      [24,1.3,29,10,2.6,3,0x384f4a],
-      [31,1.3,-28,5,2.6,3,0x625036],
-      [-3,1.3,-29,7,2.6,3,0x454d50]
+
+      [-27,1.3,-29,10,2.6,3,0x6d5136],
+      [24,1.3,29,10,2.6,3,0x3a504a],
+      [31,1.3,-28,5,2.6,3,0x665239],
+      [-3,1.3,-29,7,2.6,3,0x444d50]
+
     ];
 
-    containers.forEach(c => {
-      this.addBox(
-        [c[3], c[4], c[5]],
-        [c[0], c[1], c[2]],
-        c[6],
-        true
-      );
-    });
+    containers.forEach(
+      c =>
+        this.box(
+          [c[3],c[4],c[5]],
+          [c[0],c[1],c[2]],
+          c[6],
+          true
+        )
+    );
 
-    for (let i = 0; i < 18; i++) {
-      const x = rand(-38, 38);
-      const z = rand(-38, 38);
+    for (
+      let i = 0;
+      i < 25;
+      i++
+    ) {
 
-      if (Math.hypot(x, z) < 8) {
+      const x =
+        rand(-38,38);
+
+      const z =
+        rand(-38,38);
+
+      if (
+        Math.hypot(x,z) < 9
+      ) {
         continue;
       }
 
-      const m = this.addBox(
+      this.box(
         [
-          rand(.5, 1.5),
-          rand(.5, 1.2),
-          rand(.5, 1.5)
+          rand(.5,1.7),
+          rand(.4,1.1),
+          rand(.5,1.7)
         ],
+
         [
           x,
-          rand(.25, .6),
+          rand(.2,.55),
           z
         ],
+
         pick([
-          0x3e4648,
-          0x52595b,
-          0x6d6250
+          0x40494c,
+          0x51595b,
+          0x635a4b
         ]),
+
         false
       );
-
-      this.decor.push(m);
     }
 
-    this.spawn = [
-      [34,0,34],
-      [-34,0,-34],
-      [34,0,-34],
-      [-34,0,34],
-      [0,0,-34],
-      [34,0,0],
-      [-34,0,0],
-      [0,0,34]
+    this.spawns = [
+
+      [34,34],
+      [-34,-34],
+      [34,-34],
+      [-34,34],
+      [0,-34],
+      [34,0],
+      [-34,0],
+      [0,34]
+
     ];
+
+    /* lighting */
 
     const hemi =
       new THREE.HemisphereLight(
-        0xb7c2cc,
-        0x1a1d1e,
+        0xcbd5dc,
+        0x181c1e,
         .95
       );
 
-    this.scene.add(hemi);
-
-    const sun =
-      new THREE.DirectionalLight(
-        0xffe6c0,
-        2.2
-      );
-
-    sun.position.set(
-      -18,
-      35,
-      8
+    this.scene.add(
+      hemi
     );
 
-    sun.castShadow = true;
+    const sunlight =
+      new THREE.DirectionalLight(
+        0xffe8c7,
+        2.1
+      );
 
-    sun.shadow.mapSize.set(
+    sunlight.position.set(
+      -18,
+      35,
+      10
+    );
+
+    sunlight.castShadow =
+      true;
+
+    sunlight.shadow.mapSize.set(
       2048,
       2048
     );
 
-    sun.shadow.camera.left = -50;
-    sun.shadow.camera.right = 50;
-    sun.shadow.camera.top = 50;
-    sun.shadow.camera.bottom = -50;
+    sunlight.shadow.camera.left =
+      -55;
 
-    this.scene.add(sun);
+    sunlight.shadow.camera.right =
+      55;
+
+    sunlight.shadow.camera.top =
+      55;
+
+    sunlight.shadow.camera.bottom =
+      -55;
+
+    this.scene.add(
+      sunlight
+    );
 
     const fill =
       new THREE.DirectionalLight(
-        0x8ab3ff,
-        .65
+        0x86aeff,
+        .55
       );
 
     fill.position.set(
-      25,
+      20,
       16,
       -20
     );
 
-    this.scene.add(fill);
+    this.scene.add(
+      fill
+    );
 
-    const fog =
-      new THREE.FogExp2(
-        0x8b9496,
-        .009
+    for (
+      let i = 0;
+      i < 11;
+      i++
+    ) {
+
+      const light =
+        new THREE.PointLight(
+          0xffb16e,
+          .65,
+          11
+        );
+
+      light.position.set(
+        rand(-35,35),
+        rand(2.2,5),
+        rand(-35,35)
       );
 
-    this.scene.fog = fog;
+      this.scene.add(
+        light
+      );
+    }
 
     this.scene.background =
-      new THREE.Color(0x8b9496);
+      new THREE.Color(
+        0x858e91
+      );
+
+    this.scene.fog =
+      new THREE.FogExp2(
+        0x858e91,
+        .0095
+      );
   }
 
-  collides(
-    pos,
-    r = .35
+  collision(
+    position,
+    radius = .34
   ) {
-    for (const c of this.colliders) {
+
+    for (
+      const c of this.colliders
+    ) {
+
       if (
-        pos.x > c.min.x - r &&
-        pos.x < c.max.x + r &&
-        pos.y > c.min.y - .9 &&
-        pos.y < c.max.y + .1 &&
-        pos.z > c.min.z - r &&
-        pos.z < c.max.z + r
+        position.x >
+          c.min.x - radius &&
+        position.x <
+          c.max.x + radius &&
+
+        position.y >
+          c.min.y - .9 &&
+        position.y <
+          c.max.y + .1 &&
+
+        position.z >
+          c.min.z - radius &&
+        position.z <
+          c.max.z + radius
       ) {
         return c;
       }
@@ -1200,427 +1529,778 @@ class MapManager {
     return null;
   }
 
-  nearestSafeSpawn() {
-    const shuffled =
-      [...this.spawn].sort(
-        () => Math.random() - .5
-      );
+  spawnPosition() {
 
-    for (const p of shuffled) {
-      const v = new THREE.Vector3(
-        p[0],
-        1.01,
-        p[2]
-      );
+    const list =
+      [...this.spawns]
+        .sort(
+          () =>
+            Math.random() - .5
+        );
 
-      let ok = true;
+    for (
+      const [x,z] of list
+    ) {
 
-      for (const b of game.bots) {
+      const p =
+        new THREE.Vector3(
+          x,
+          1.01,
+          z
+        );
+
+      let safe =
+        true;
+
+      for (
+        const bot of game.bots
+      ) {
+
         if (
-          b.alive &&
-          b.group.position.distanceTo(v) < 10
+          bot.alive &&
+          bot.group.position.distanceTo(
+            p
+          ) < 11
         ) {
-          ok = false;
+          safe = false;
         }
       }
 
-      if (ok) {
-        return v;
+      if (safe) {
+        return p;
       }
     }
 
-    const p = pick(this.spawn);
+    const [x,z] =
+      pick(this.spawns);
 
     return new THREE.Vector3(
-      p[0],
+      x,
       1.01,
-      p[2]
+      z
     );
   }
 }
 
-class WeaponManager {
-  constructor(game) {
-    this.game = game;
-    this.currentKey = 'carbine';
-    this.current = null;
-    this.ammo = {};
-    this.reloadT = 0;
-    this.fireT = 0;
-    this.switchT = 0;
-    this.throwT = 0;
-    this.view = new THREE.Group();
+/* =========================================================
+   VFX
+========================================================= */
 
-    game.camera.add(this.view);
+class VFX {
 
-    this.muzzle = null;
-    this.set = '';
+  constructor(scene) {
+
+    this.scene = scene;
+    this.tracers = [];
+    this.particles = [];
   }
 
-  init() {
-    for (const k of Object.keys(WEAPONS)) {
-      this.ammo[k] = {
-        mag: WEAPONS[k].mag,
-        reserve: WEAPONS[k].reserve
-      };
+  tracer(
+    start,
+    end,
+    color
+  ) {
+
+    const geometry =
+      new THREE.BufferGeometry()
+        .setFromPoints([
+          start,
+          end
+        ]);
+
+    const material =
+      new THREE.LineBasicMaterial({
+        color,
+        transparent:true,
+        opacity:.75
+      });
+
+    const line =
+      new THREE.Line(
+        geometry,
+        material
+      );
+
+    this.scene.add(
+      line
+    );
+
+    this.tracers.push({
+      object:line,
+      time:.05
+    });
+  }
+
+  particle(
+    position,
+    color,
+    size,
+    velocity,
+    lifetime
+  ) {
+
+    const object =
+      Models.box(
+        size,
+        size,
+        size,
+        color,
+        .55,
+        .15
+      );
+
+    object.position.copy(
+      position
+    );
+
+    object.userData.velocity =
+      velocity;
+
+    this.scene.add(
+      object
+    );
+
+    this.particles.push({
+      object,
+      time:lifetime
+    });
+  }
+
+  muzzle(
+    position
+  ) {
+
+    for (
+      let i=0;
+      i<7;
+      i++
+    ) {
+
+      this.particle(
+        position,
+        i % 2
+          ? 0xffb04a
+          : 0xffffcf,
+        .035,
+        new THREE.Vector3(
+          rand(-1.5,1.5),
+          rand(-.4,1.2),
+          rand(-1.5,1.5)
+        ),
+        .2
+      );
+    }
+  }
+
+  impact(
+    position,
+    head = false
+  ) {
+
+    for (
+      let i=0;
+      i<(head ? 9 : 5);
+      i++
+    ) {
+
+      this.particle(
+        position,
+        head
+          ? 0xffffcc
+          : 0xaeb5b8,
+        .04,
+        new THREE.Vector3(
+          rand(-2.2,2.2),
+          rand(.4,2),
+          rand(-2.2,2.2)
+        ),
+        .35
+      );
+    }
+  }
+
+  explosion(
+    position
+  ) {
+
+    for (
+      let i=0;
+      i<22;
+      i++
+    ) {
+
+      this.particle(
+        position,
+        i%2
+          ? 0xff8230
+          : 0xffd069,
+        .07,
+        new THREE.Vector3(
+          rand(-5,5),
+          rand(1,6),
+          rand(-5,5)
+        ),
+        .65
+      );
     }
 
+    audio.explosion();
+  }
+
+  update(dt) {
+
+    for (
+      let i=this.tracers.length-1;
+      i>=0;
+      i--
+    ) {
+
+      const tracer =
+        this.tracers[i];
+
+      tracer.time -=
+        dt;
+
+      tracer.object.material.opacity =
+        clamp(
+          tracer.time/.05,
+          0,
+          1
+        );
+
+      if (
+        tracer.time<=0
+      ) {
+
+        this.scene.remove(
+          tracer.object
+        );
+
+        tracer.object.geometry.dispose();
+        tracer.object.material.dispose();
+
+        this.tracers.splice(
+          i,
+          1
+        );
+      }
+    }
+
+    for (
+      let i=this.particles.length-1;
+      i>=0;
+      i--
+    ) {
+
+      const particle =
+        this.particles[i];
+
+      particle.time -=
+        dt;
+
+      particle.object.position.addScaledVector(
+        particle.object.userData.velocity,
+        dt
+      );
+
+      particle.object.userData.velocity.y -=
+        8 * dt;
+
+      particle.object.scale.multiplyScalar(
+        .97
+      );
+
+      if (
+        particle.time<=0
+      ) {
+
+        this.scene.remove(
+          particle.object
+        );
+
+        this.particles.splice(
+          i,
+          1
+        );
+      }
+    }
+  }
+}
+
+/* =========================================================
+   WEAPON MANAGER
+========================================================= */
+
+class WeaponManager {
+
+  constructor(game) {
+
+    this.game = game;
+
+    this.currentKey =
+      'carbine';
+
+    this.current =
+      null;
+
+    this.viewmodel =
+      new THREE.Group();
+
+    this.game.camera.add(
+      this.viewmodel
+    );
+
+    this.ammo = {};
+
+    this.fireCooldown = 0;
+    this.reloadTimer = 0;
+    this.switchTimer = 0;
+    this.inspectTimer = 0;
+
+    this.muzzle =
+      null;
+  }
+
+  initializeAmmo() {
+
+    this.ammo = {};
+
+    for (
+      const key of Object.keys(
+        WEAPONS
+      )
+    ) {
+
+      this.ammo[key] = {
+        mag:
+          WEAPONS[key].mag,
+
+        reserve:
+          WEAPONS[key].reserve
+      };
+    }
+  }
+
+  initialize() {
+
+    this.initializeAmmo();
+
     this.equip(
-      'carbine',
+      this.currentKey,
       true
     );
   }
 
-  categoryKeys() {
-    return [
-      'primary',
-      'melee',
-      'pistol',
-      'tactical',
-      'lethal'
-    ];
+  categoryOf(
+    key
+  ) {
+
+    if (
+      key === 'knife'
+    ) {
+      return 'MELEE';
+    }
+
+    if (
+      [
+        'frag',
+        'impact',
+        'incendiary'
+      ].includes(key)
+    ) {
+      return 'LETHAL';
+    }
+
+    if (
+      [
+        'flash',
+        'smoke',
+        'stun',
+        'emp'
+      ].includes(key)
+    ) {
+      return 'TACTICAL';
+    }
+
+    return WEAPONS[key]?.category ||
+      'PRIMARY';
   }
 
-  catKey(cat) {
-    if (cat === 'primary') {
+  keyForCategory(
+    category
+  ) {
+
+    if (
+      category === 'PRIMARY'
+    ) {
       return this.game.kit.primary;
     }
 
-    if (cat === 'pistol') {
+    if (
+      category === 'PISTOL'
+    ) {
       return this.game.kit.secondary;
     }
 
-    if (cat === 'melee') {
+    if (
+      category === 'MELEE'
+    ) {
       return 'knife';
     }
 
-    if (cat === 'tactical') {
+    if (
+      category === 'TACTICAL'
+    ) {
       return this.game.kit.tactical;
     }
 
-    if (cat === 'lethal') {
+    if (
+      category === 'LETHAL'
+    ) {
       return this.game.kit.lethal;
     }
+
+    return null;
   }
 
-  equip(
-    key,
-    instant = false
+  name(
+    key
   ) {
+
     if (
-      this.switchT > 0 &&
-      !instant
+      key === 'knife'
     ) {
-      return;
-    }
-
-    this.reloadT = 0;
-
-    this.switchT =
-      instant ? 0 : .18;
-
-    this.view.clear();
-
-    this.currentKey = key;
-
-    this.current =
-      this.makeView(key);
-
-    if (this.current) {
-      this.view.add(
-        this.current.group
-      );
-    }
-
-    this.set = key;
-
-    this.updateHud();
-
-    const cat =
-      this.catOf(key);
-
-    game.showWeaponToast(
-      `${cat.toUpperCase()} // ${this.name(key)}`
-    );
-
-    audio.ui();
-  }
-
-  name(k) {
-    if (k === 'knife') {
       return 'COMBAT KNIFE';
     }
 
-    if (
-      [
-        'frag',
-        'incendiary',
-        'impact',
-        'flash',
-        'smoke',
-        'emp',
-        'stun'
-      ].includes(k)
-    ) {
-      return (
-        k.toUpperCase() +
-        ' GRENADE'
-      );
-    }
+    const grenades = {
+      frag:'FRAGMENTATION GRENADE',
+      impact:'IMPACT GRENADE',
+      incendiary:'INCENDIARY GRENADE',
+      flash:'FLASH GRENADE',
+      smoke:'SMOKE GRENADE',
+      stun:'STUN GRENADE',
+      emp:'EMP GRENADE'
+    };
 
     return (
-      WEAPONS[k]?.name ||
-      k.toUpperCase()
+      grenades[key] ||
+      WEAPONS[key]?.name ||
+      key.toUpperCase()
     );
   }
 
-  catOf(k) {
-    if (k === 'knife') {
-      return 'melee';
-    }
+  buildViewmodel(
+    key
+  ) {
+
+    const root =
+      new THREE.Group();
+
+    root.position.set(
+      .37,
+      -.41,
+      -.71
+    );
+
+    /* IMPORTANT:
+       only FPS arms,
+       not the full character */
+
+    const arms =
+      Models.humanArms();
+
+    arms.scale.setScalar(
+      .92
+    );
+
+    root.add(
+      arms
+    );
+
+    let weapon;
 
     if (
-      [
-        'frag',
-        'incendiary',
-        'impact'
-      ].includes(k)
+      key === 'knife'
     ) {
-      return 'lethal';
-    }
 
-    if (
-      [
-        'flash',
-        'smoke',
-        'emp',
-        'stun'
-      ].includes(k)
-    ) {
-      return 'tactical';
-    }
-
-    return (
-      WEAPONS[k]?.cat ||
-      'primary'
-    );
-  }
-
-  makeView(key) {
-    const g = new THREE.Group();
-
-    g.position.set(
-      .38,
-      -.42,
-      -.72
-    );
-
-    const body =
-      ModelFactory.character(0);
-
-    body.scale.setScalar(.58);
-
-    body.position.set(
-      .03,
-      -.36,
-      .28
-    );
-
-    body.rotation.y =
-      Math.PI;
-
-    g.add(body);
-
-    let item;
-
-    if (key === 'knife') {
-      item =
-        ModelFactory.knife();
+      weapon =
+        Models.knife();
 
     } else if (
       [
         'frag',
-        'incendiary',
         'impact',
+        'incendiary',
         'flash',
         'smoke',
-        'emp',
-        'stun'
+        'stun',
+        'emp'
       ].includes(key)
     ) {
-      item =
-        ModelFactory.grenade(key);
+
+      weapon =
+        Models.grenade(
+          key
+        );
 
     } else {
-      item =
-        ModelFactory.weapon(
-          WEAPONS[key]?.model ||
-          'pistol'
+
+      weapon =
+        Models.weapon(
+          WEAPONS[key].model
         );
     }
 
-    item.scale.setScalar(
-      key === 'knife'
-        ? .65
-        : 1
-    );
-
-    item.position.set(
+    weapon.position.set(
       0,
-      .02,
-      0
+      -.01,
+      -.04
     );
 
-    g.add(item);
+    root.add(
+      weapon
+    );
 
     this.muzzle =
       new THREE.Mesh(
         new THREE.SphereGeometry(
-          .03,
+          .035,
           8,
           8
         ),
         new THREE.MeshBasicMaterial({
-          color: 0xffffcc,
-          transparent: true,
-          opacity: 0
+          color:0xffffcc,
+          transparent:true,
+          opacity:0
         })
       );
 
     this.muzzle.position.set(
       0,
-      .04,
-      -.68
+      .035,
+      -.67
     );
 
-    g.add(this.muzzle);
+    root.add(
+      this.muzzle
+    );
 
-    return {
-      group: g,
-      item
-    };
+    return root;
   }
 
-  switchCategory(dir = 1) {
-    const cats =
-      this.categoryKeys();
+  equip(
+    key,
+    immediate = false
+  ) {
 
-    let i =
-      cats.indexOf(
-        this.catOf(
-          this.currentKey
-        )
+    if (
+      !immediate &&
+      this.switchTimer > 0
+    ) {
+      return;
+    }
+
+    this.reloadTimer = 0;
+    this.inspectTimer = 0;
+
+    this.switchTimer =
+      immediate
+        ? 0
+        : .2;
+
+    this.viewmodel.clear();
+
+    this.currentKey =
+      key;
+
+    this.current =
+      this.buildViewmodel(
+        key
       );
 
-    for (
-      let n = 0;
-      n < cats.length;
-      n++
-    ) {
-      i =
-        (i + dir + cats.length) %
-        cats.length;
+    this.viewmodel.add(
+      this.current
+    );
 
-      const key =
-        this.catKey(cats[i]);
+    this.updateHUD();
 
-      if (key) {
-        this.equip(key);
-        return;
-      }
-    }
+    this.game.showWeaponToast(
+      `${this.categoryOf(key)} // ${this.name(key)}`
+    );
+
+    audio.switchWeapon();
+  }
+
+  cycle() {
+
+    const order = [
+      'PRIMARY',
+      'MELEE',
+      'PISTOL',
+      'TACTICAL',
+      'LETHAL'
+    ];
+
+    const current =
+      this.categoryOf(
+        this.currentKey
+      );
+
+    let index =
+      order.indexOf(
+        current
+      );
+
+    index =
+      (index + 1) %
+      order.length;
+
+    this.equip(
+      this.keyForCategory(
+        order[index]
+      )
+    );
   }
 
   fire() {
-    if (
-      !this.currentKey ||
-      this.catOf(this.currentKey) === 'melee' ||
-      this.catOf(this.currentKey) === 'tactical' ||
-      this.catOf(this.currentKey) === 'lethal'
-    ) {
-      return false;
-    }
 
-    const w =
-      WEAPONS[this.currentKey];
-
-    const a =
-      this.ammo[this.currentKey];
+    const category =
+      this.categoryOf(
+        this.currentKey
+      );
 
     if (
-      this.reloadT > 0 ||
-      this.fireT > 0
+      category !== 'PRIMARY' &&
+      category !== 'PISTOL'
     ) {
-      return false;
+      return;
     }
 
-    if (a.mag <= 0) {
-      audio.click();
-      return false;
+    if (
+      this.reloadTimer > 0 ||
+      this.fireCooldown > 0 ||
+      this.inspectTimer > 0
+    ) {
+      return;
     }
 
-    this.fireT =
-      60 / w.rate;
+    const weapon =
+      WEAPONS[
+        this.currentKey
+      ];
 
-    a.mag--;
+    const ammo =
+      this.ammo[
+        this.currentKey
+      ];
 
-    this.updateHud();
+    if (
+      ammo.mag <= 0
+    ) {
+
+      audio.dry();
+
+      this.reload();
+
+      return;
+    }
+
+    ammo.mag--;
+
+    this.fireCooldown =
+      60 / weapon.rate;
+
+    this.updateHUD();
 
     audio.gun();
 
-    this.flash();
-
-    this.game.player.fireRecoil =
-      w.recoil;
-
-    const pellets =
-      w.pellets || 1;
-
-    for (
-      let i = 0;
-      i < pellets;
-      i++
+    if (
+      this.muzzle
     ) {
-      this.shootRay(w);
-    }
 
-    if (a.mag === 0) {
-      game.showWeaponToast(
-        'EMPTY MAGAZINE'
+      this.muzzle.material.opacity =
+        1;
+
+      setTimeout(
+        () => {
+
+          if (
+            this.muzzle
+          ) {
+            this.muzzle.material.opacity =
+              0;
+          }
+
+        },
+        45
+      );
+
+      const muzzlePosition =
+        new THREE.Vector3();
+
+      this.muzzle.getWorldPosition(
+        muzzlePosition
+      );
+
+      this.game.vfx.muzzle(
+        muzzlePosition
       );
     }
 
-    return true;
+    this.game.player.recoil =
+      weapon.recoil;
+
+    const pellets =
+      weapon.pellets ||
+      1;
+
+    for (
+      let i=0;
+      i<pellets;
+      i++
+    ) {
+
+      this.fireRay(
+        weapon
+      );
+    }
   }
 
-  shootRay(w) {
+  fireRay(
+    weapon
+  ) {
+
     const ray =
       new THREE.Raycaster();
 
     const spread =
-      w.spread *
+      weapon.spread *
       (
         this.game.player.ads
-          ? 0.5
+          ? .45
           : 1
       );
 
-    const ndc =
+    const point =
       new THREE.Vector2(
-        rand(-spread, spread),
-        rand(-spread, spread)
+        rand(-spread,spread),
+        rand(-spread,spread)
       );
 
     ray.setFromCamera(
-      ndc,
+      point,
       this.game.camera
     );
 
     const targets = [
       ...this.game.bots
-        .filter(b => b.alive)
-        .map(b => b.hitMeshes)
-        .flat(),
+        .filter(
+          b => b.alive
+        )
+        .flatMap(
+          b => b.hitMeshes
+        ),
 
       ...this.game.map.colliders
         .map(c => c.mesh)
@@ -1632,407 +2312,421 @@ class WeaponManager {
         false
       )[0];
 
-    const from =
+    const origin =
       ray.ray.origin.clone();
 
-    const to =
-      from.clone().add(
+    const destination =
+      origin.clone().add(
         ray.ray.direction
           .clone()
           .multiplyScalar(
             hit
               ? hit.distance
-              : w.range
+              : weapon.range
           )
       );
 
     this.game.vfx.tracer(
-      from,
-      to,
-      hit
-        ? 0xd6f85a
-        : 0xb8d8ff
+      origin,
+      destination,
+      0xd7ff5b
     );
 
-    if (hit) {
-      const bot =
-        hit.object.userData.bot;
+    if (!hit) {
+      return;
+    }
 
-      if (bot) {
-        const mult =
-          hit.object.userData.part === 'head'
-            ? w.head
-            : (
-              hit.object.userData.part === 'limb'
-                ? .75
-                : 1
-            );
+    const bot =
+      hit.object.userData.bot;
 
-        const dmg =
-          w.damage * mult;
+    if (!bot) {
+      return;
+    }
+
+    const part =
+      hit.object.userData.part ||
+      'body';
+
+    const multiplier =
+      part === 'head'
+        ? weapon.head
+        : part === 'limb'
+          ? .75
+          : 1;
+
+    const damage =
+      weapon.damage *
+      multiplier;
+
+    const killed =
+      bot.takeDamage(
+        damage,
+        this.game.player
+      );
+
+    this.game.hitFeedback(
+      part === 'head',
+      killed
+    );
+  }
+
+  reload() {
+
+    if (
+      !WEAPONS[
+        this.currentKey
+      ]
+    ) {
+      return;
+    }
+
+    if (
+      this.reloadTimer > 0
+    ) {
+      return;
+    }
+
+    const weapon =
+      WEAPONS[
+        this.currentKey
+      ];
+
+    const ammo =
+      this.ammo[
+        this.currentKey
+      ];
+
+    if (
+      ammo.mag >=
+      weapon.mag
+    ) {
+      return;
+    }
+
+    if (
+      ammo.reserve <= 0
+    ) {
+      return;
+    }
+
+    this.reloadTimer =
+      weapon.reload;
+
+    audio.reload();
+
+    $('reloadIndicator')
+      .classList.add('on');
+  }
+
+  inspect() {
+
+    if (
+      this.inspectTimer > 0 ||
+      this.reloadTimer > 0
+    ) {
+      return;
+    }
+
+    this.inspectTimer =
+      1.6;
+
+    audio.inspect();
+
+    this.game.showWeaponToast(
+      `INSPECT // ${this.name(this.currentKey)}`
+    );
+  }
+
+  melee() {
+
+    if (
+      this.categoryOf(
+        this.currentKey
+      ) !== 'MELEE'
+    ) {
+      this.equip(
+        'knife'
+      );
+
+      return;
+    }
+
+    audio.melee();
+
+    const ray =
+      new THREE.Raycaster();
+
+    ray.setFromCamera(
+      new THREE.Vector2(0,0),
+      this.game.camera
+    );
+
+    for (
+      const bot of
+      this.game.bots.filter(
+        b => b.alive
+      )
+    ) {
+
+      const hit =
+        ray.intersectObjects(
+          bot.hitMeshes,
+          false
+        )[0];
+
+      if (
+        hit &&
+        hit.distance < 2.5
+      ) {
 
         const killed =
           bot.takeDamage(
-            dmg,
+            85,
             this.game.player
           );
 
         this.game.hitFeedback(
-          hit.object.userData.part === 'head',
+          false,
           killed
         );
+
+        break;
       }
     }
   }
 
-  flash() {
-    if (!this.muzzle) {
-      return;
-    }
+  update(
+    dt
+  ) {
 
-    this.muzzle.material.opacity = 1;
-
-    setTimeout(() => {
-      if (this.muzzle) {
-        this.muzzle.material.opacity = 0;
-      }
-    }, 38);
-
-    game.vfx.puff(
-      this.cameraMuzzleWorld()
-    );
-  }
-
-  cameraMuzzleWorld() {
-    const v =
-      new THREE.Vector3();
-
-    this.muzzle?.getWorldPosition(v);
-
-    return v;
-  }
-
-  reload() {
-    const key =
-      this.currentKey;
+    this.fireCooldown =
+      Math.max(
+        0,
+        this.fireCooldown - dt
+      );
 
     if (
-      !WEAPONS[key] ||
-      this.reloadT > 0
+      this.reloadTimer > 0
     ) {
-      return;
-    }
 
-    if (
-      this.ammo[key].mag >=
-      WEAPONS[key].mag ||
-      this.ammo[key].reserve <= 0
-    ) {
-      return;
-    }
+      this.reloadTimer -=
+        dt;
 
-    this.reloadT =
-      WEAPONS[key].reload;
+      if (
+        this.reloadTimer <= 0
+      ) {
 
-    audio.reload();
-  }
-
-  update(dt) {
-    if (this.fireT > 0) {
-      this.fireT =
-        Math.max(
-          0,
-          this.fireT - dt
-        );
-    }
-
-    if (this.reloadT > 0) {
-      this.reloadT -= dt;
-
-      if (this.reloadT <= 0) {
-        const w =
+        const weapon =
           WEAPONS[
             this.currentKey
           ];
 
-        const a =
+        const ammo =
           this.ammo[
             this.currentKey
           ];
 
-        const need =
-          w.mag - a.mag;
-
-        const take =
+        const amount =
           Math.min(
-            need,
-            a.reserve
+            weapon.mag - ammo.mag,
+            ammo.reserve
           );
 
-        a.mag += take;
-        a.reserve -= take;
+        ammo.mag +=
+          amount;
 
-        this.updateHud();
+        ammo.reserve -=
+          amount;
+
+        $('reloadIndicator')
+          .classList.remove(
+            'on'
+          );
+
+        this.updateHUD();
       }
     }
 
-    if (this.switchT > 0) {
-      this.switchT =
-        Math.max(
-          0,
-          this.switchT - dt
-        );
+    if (
+      this.switchTimer > 0
+    ) {
+
+      this.switchTimer -=
+        dt;
     }
 
-    this.updateView(dt);
+    if (
+      this.inspectTimer > 0
+    ) {
+
+      this.inspectTimer -=
+        dt;
+    }
+
+    this.animateViewmodel(
+      dt
+    );
   }
 
-  updateView(dt) {
-    if (!this.current) {
-      return;
-    }
+  animateViewmodel(
+    dt
+  ) {
+
+    const player =
+      this.game.player;
 
     const moving =
-      this.game.player.velocity.length() > 1;
+      player.velocity.length() > 1;
 
     const ads =
-      this.game.player.ads;
+      player.ads;
 
-    const targetX =
-      ads ? .18 : .38;
+    const time =
+      performance.now() *
+      .001;
 
-    const targetY =
-      ads ? -.33 : -.42;
-
-    this.view.position.x =
-      lerp(
-        this.view.position.x,
-        targetX,
-        .08
-      );
-
-    this.view.position.y =
-      lerp(
-        this.view.position.y,
-        targetY,
-        .08
-      );
-
-    this.view.position.z =
-      lerp(
-        this.view.position.z,
-        ads ? -.58 : -.72,
-        .08
-      );
-
-    const bob =
+    const walkBob =
       moving
-        ? Math.sin(
-            performance.now() *
-            .012
-          ) * .012
+        ? Math.sin(time * 8) * .018
         : 0;
 
-    this.view.rotation.z =
+    const targetX =
+      ads ? .12 : .37;
+
+    const targetY =
+      ads ? -.32 : -.41;
+
+    const targetZ =
+      ads ? -.56 : -.71;
+
+    this.viewmodel.position.x =
       lerp(
-        this.view.rotation.z,
-        bob,
+        this.viewmodel.position.x,
+        targetX,
+        .09
+      );
+
+    this.viewmodel.position.y =
+      lerp(
+        this.viewmodel.position.y,
+        targetY + walkBob,
+        .09
+      );
+
+    this.viewmodel.position.z =
+      lerp(
+        this.viewmodel.position.z,
+        targetZ,
+        .09
+      );
+
+    this.viewmodel.rotation.z =
+      lerp(
+        this.viewmodel.rotation.z,
+        moving
+          ? Math.sin(time * 8) * .025
+          : 0,
         .1
       );
+
+    this.viewmodel.rotation.x =
+      lerp(
+        this.viewmodel.rotation.x,
+        ads
+          ? -.025
+          : 0,
+        .1
+      );
+
+    if (
+      this.game.player.recoil > 0
+    ) {
+
+      this.viewmodel.rotation.x -=
+        this.game.player.recoil *
+        1.3;
+    }
+
+    if (
+      this.inspectTimer > 0
+    ) {
+
+      const progress =
+        this.inspectTimer / 1.6;
+
+      this.viewmodel.rotation.y =
+        Math.sin(
+          progress * Math.PI * 2
+        ) * .45;
+
+      this.viewmodel.rotation.x =
+        Math.sin(
+          progress * Math.PI
+        ) * .18;
+    }
   }
 
-  updateHud() {
-    const key =
-      this.currentKey;
+  updateHUD() {
 
-    const w =
-      WEAPONS[key];
+    const category =
+      this.categoryOf(
+        this.currentKey
+      );
 
-    document.getElementById(
-      'weaponName'
-    ).textContent =
-      this.name(key);
+    const weapon =
+      WEAPONS[
+        this.currentKey
+      ];
 
-    if (w) {
-      document.getElementById(
-        'ammoMain'
-      ).textContent =
-        this.ammo[key].mag;
+    $('weaponCategory')
+      .textContent =
+      category;
 
-      document.getElementById(
-        'ammoReserve'
-      ).textContent =
-        this.ammo[key].reserve;
+    $('weaponName')
+      .textContent =
+      this.name(
+        this.currentKey
+      );
+
+    if (weapon) {
+
+      $('ammoMain')
+        .textContent =
+        this.ammo[
+          this.currentKey
+        ].mag;
+
+      $('ammoReserve')
+        .textContent =
+        this.ammo[
+          this.currentKey
+        ].reserve;
+
     } else {
-      document.getElementById(
-        'ammoMain'
-      ).textContent = '—';
 
-      document.getElementById(
-        'ammoReserve'
-      ).textContent = '—';
+      $('ammoMain')
+        .textContent =
+        '—';
+
+      $('ammoReserve')
+        .textContent =
+        '—';
     }
   }
 }
 
-class VFX {
-  constructor(scene) {
-    this.scene = scene;
-    this.tracers = [];
-    this.particles = [];
-  }
-
-  tracer(a, b, color) {
-    const geo =
-      new THREE.BufferGeometry()
-        .setFromPoints([
-          a,
-          b
-        ]);
-
-    const line =
-      new THREE.Line(
-        geo,
-        new THREE.LineBasicMaterial({
-          color,
-          transparent: true,
-          opacity: .75
-        })
-      );
-
-    this.scene.add(line);
-
-    this.tracers.push({
-      obj: line,
-      t: .045
-    });
-  }
-
-  puff(pos) {
-    for (let i = 0; i < 6; i++) {
-      const p =
-        ModelFactory.box(
-          .035,
-          .035,
-          .035,
-          0xffd9a2,
-          .5,
-          .2
-        );
-
-      p.position.copy(pos);
-
-      p.userData.vel =
-        new THREE.Vector3(
-          rand(-1,1),
-          rand(-.2,1),
-          rand(-1,1)
-        );
-
-      this.scene.add(p);
-
-      this.particles.push({
-        obj: p,
-        t: .22
-      });
-    }
-  }
-
-  hit(pos, head = false) {
-    for (
-      let i = 0;
-      i < (head ? 10 : 5);
-      i++
-    ) {
-      const p =
-        ModelFactory.box(
-          .04,
-          .04,
-          .04,
-          head
-            ? 0xffffcc
-            : 0xaeb6bb,
-          .5,
-          .2
-        );
-
-      p.position.copy(pos);
-
-      p.userData.vel =
-        new THREE.Vector3(
-          rand(-2,2),
-          rand(.5,2),
-          rand(-2,2)
-        );
-
-      this.scene.add(p);
-
-      this.particles.push({
-        obj: p,
-        t: .35
-      });
-    }
-  }
-
-  update(dt) {
-    for (
-      let i = this.tracers.length - 1;
-      i >= 0;
-      i--
-    ) {
-      const x =
-        this.tracers[i];
-
-      x.t -= dt;
-
-      x.obj.material.opacity =
-        clamp(
-          x.t / .045,
-          0,
-          1
-        );
-
-      if (x.t <= 0) {
-        this.scene.remove(x.obj);
-
-        x.obj.geometry.dispose();
-        x.obj.material.dispose();
-
-        this.tracers.splice(i, 1);
-      }
-    }
-
-    for (
-      let i = this.particles.length - 1;
-      i >= 0;
-      i--
-    ) {
-      const x =
-        this.particles[i];
-
-      x.t -= dt;
-
-      x.obj.position.addScaledVector(
-        x.obj.userData.vel,
-        dt
-      );
-
-      x.obj.userData.vel.y -=
-        7 * dt;
-
-      x.obj.scale.multiplyScalar(.98);
-
-      if (x.t <= 0) {
-        this.scene.remove(x.obj);
-        this.particles.splice(i, 1);
-      }
-    }
-  }
-}
+/* =========================================================
+   PLAYER
+========================================================= */
 
 class Player {
-  constructor(game) {
-    this.game = game;
+
+  constructor(
+    game
+  ) {
+
+    this.game =
+      game;
 
     this.position =
       new THREE.Vector3(
@@ -2050,63 +2744,104 @@ class Player {
     this.health = 100;
     this.maxHealth = 100;
 
-    this.ground = true;
-    this.crouch = false;
-    this.sprint = false;
+    this.grounded = true;
+    this.crouched = false;
+    this.sprinting = false;
     this.ads = false;
 
-    this.fireRecoil = 0;
+    this.recoil = 0;
+
     this.alive = true;
 
-    this.stepT = 0;
-    this.headBob = 0;
-    this.radius = .34;
+    this.stepTimer = 0;
+    this.bobTimer = 0;
   }
 
-  reset(pos) {
-    this.position.copy(pos);
-    this.velocity.set(0,0,0);
+  reset(
+    position
+  ) {
+
+    this.position.copy(
+      position
+    );
+
+    this.velocity.set(
+      0,
+      0,
+      0
+    );
 
     this.health = 100;
     this.alive = true;
 
-    this.pitch = 0;
     this.yaw = 0;
+    this.pitch = 0;
 
     this.ads = false;
-    this.crouch = false;
+    this.crouched = false;
+    this.sprinting = false;
+
+    this.updateHUD();
   }
 
-  update(dt) {
+  updateHUD() {
+
+    $('healthValue')
+      .textContent =
+      Math.ceil(
+        Math.max(
+          0,
+          this.health
+        )
+      );
+
+    $('healthBar')
+      .style.width =
+      clamp(
+        this.health,
+        0,
+        100
+      ) + '%';
+  }
+
+  update(
+    dt
+  ) {
+
     if (!this.alive) {
       return;
     }
 
-    const lookScale =
+    const sensitivity =
       (
         this.ads
           ? settings.adsSensitivity
           : settings.sensitivity
       ) * .0019;
 
-    this.yaw -=
-      input.mouse.dx *
-      lookScale;
+    if (
+      input.pointerLocked
+    ) {
 
-    this.pitch -=
-      input.mouse.dy *
-      lookScale *
-      (
-        settings.invert
-          ? -1
-          : 1
-      );
+      this.yaw -=
+        input.mouse.dx *
+        sensitivity;
+
+      this.pitch -=
+        input.mouse.dy *
+        sensitivity *
+        (
+          settings.invert
+            ? -1
+            : 1
+        );
+    }
 
     this.pitch =
       clamp(
         this.pitch,
-        -1.52,
-        1.52
+        -1.5,
+        1.5
       );
 
     this.game.camera.rotation.order =
@@ -2135,51 +2870,70 @@ class Player {
     const wish =
       new THREE.Vector3();
 
-    if (input.down('KeyW')) {
-      wish.add(forward);
+    if (
+      input.down('KeyW')
+    ) {
+      wish.add(
+        forward
+      );
     }
 
-    if (input.down('KeyS')) {
-      wish.sub(forward);
+    if (
+      input.down('KeyS')
+    ) {
+      wish.sub(
+        forward
+      );
     }
 
-    if (input.down('KeyD')) {
-      wish.add(right);
+    if (
+      input.down('KeyD')
+    ) {
+      wish.add(
+        right
+      );
     }
 
-    if (input.down('KeyA')) {
-      wish.sub(right);
+    if (
+      input.down('KeyA')
+    ) {
+      wish.sub(
+        right
+      );
     }
 
-    if (wish.lengthSq()) {
+    if (
+      wish.lengthSq() > 0
+    ) {
       wish.normalize();
     }
 
-    this.crouch =
+    this.crouched =
       input.down('Control');
 
-    this.sprint =
-      input.down('ShiftLeft') ||
-      input.down('ShiftRight');
+    this.sprinting =
+      (
+        input.down('ShiftLeft') ||
+        input.down('ShiftRight')
+      ) &&
+      !this.crouched &&
+      !this.ads &&
+      wish.lengthSq() > 0;
 
-    if (this.crouch) {
-      this.sprint = false;
-    }
+    const speed =
+      this.crouched
+        ? 3
+        : this.sprinting
+          ? 8.8
+          : 5.3;
 
-    const base =
-      this.crouch
-        ? 3.0
-        : (
-          this.sprint && !this.ads
-            ? 8.7
-            : 5.3
-        );
+    wish.multiplyScalar(
+      speed
+    );
 
-    wish.multiplyScalar(base);
-
-    const accel =
-      this.ground
-        ? 18
+    const acceleration =
+      this.grounded
+        ? 20
         : 8;
 
     this.velocity.x =
@@ -2187,7 +2941,7 @@ class Player {
         this.velocity.x,
         wish.x,
         clamp(
-          accel * dt,
+          acceleration * dt,
           0,
           1
         )
@@ -2198,308 +2952,383 @@ class Player {
         this.velocity.z,
         wish.z,
         clamp(
-          accel * dt,
+          acceleration * dt,
           0,
           1
         )
       );
 
     if (
-      this.ground &&
-      input.pressed('Space')
+      this.grounded &&
+      input.pressed(
+        'Space'
+      )
     ) {
-      this.velocity.y = 6.4;
-      this.ground = false;
+
+      this.velocity.y =
+        6.3;
+
+      this.grounded =
+        false;
     }
 
     this.velocity.y -=
       18 * dt;
 
-    let next =
-      this.position
-        .clone()
+    const next =
+      this.position.clone()
         .addScaledVector(
           this.velocity,
           dt
         );
 
-    if (next.y <= 1.01) {
+    if (
+      next.y <= 1.01
+    ) {
+
       next.y = 1.01;
 
-      if (this.velocity.y < 0) {
+      if (
+        this.velocity.y < 0
+      ) {
         this.velocity.y = 0;
       }
 
-      this.ground = true;
+      this.grounded =
+        true;
+
     } else {
-      this.ground = false;
+
+      this.grounded =
+        false;
     }
 
-    const c =
-      this.game.map.collides(
+    const collision =
+      this.game.map.collision(
         new THREE.Vector3(
           next.x,
           next.y - .7,
           next.z
         ),
-        this.radius
+        .34
       );
 
-    if (!c) {
+    if (!collision) {
+
       this.position.x =
         next.x;
 
       this.position.z =
         next.z;
+
     } else {
-      const cx =
-        clamp(
-          next.x,
-          c.min.x - this.radius,
-          c.max.x + this.radius
-        );
 
-      const cz =
-        clamp(
-          next.z,
-          c.min.z - this.radius,
-          c.max.z + this.radius
-        );
+      const pushX =
+        next.x <
+        (
+          collision.min.x +
+          collision.max.x
+        ) / 2
+          ? collision.min.x - .35
+          : collision.max.x + .35;
 
-      const dx =
+      const pushZ =
+        next.z <
+        (
+          collision.min.z +
+          collision.max.z
+        ) / 2
+          ? collision.min.z - .35
+          : collision.max.z + .35;
+
+      if (
         Math.abs(
-          next.x - cx
-        );
-
-      const dz =
+          next.x - pushX
+        ) <
         Math.abs(
-          next.z - cz
-        );
+          next.z - pushZ
+        )
+      ) {
 
-      if (dx > dz) {
-        this.position.z =
-          next.z;
-      } else {
         this.position.x =
-          next.x;
+          pushX;
+
+      } else {
+
+        this.position.z =
+          pushZ;
       }
 
-      this.velocity.multiplyScalar(.1);
-    }
+      this.velocity.x *=
+        .1;
 
-    this.position.y = next.y;
+      this.velocity.z *=
+        .1;
+    }
 
     this.position.x =
       clamp(
         this.position.x,
-        -41.5,
-        41.5
+        -41.6,
+        41.6
       );
 
     this.position.z =
       clamp(
         this.position.z,
-        -41.5,
-        41.5
+        -41.6,
+        41.6
       );
 
-    const speed =
+    this.position.y =
+      next.y;
+
+    const horizontalSpeed =
       Math.hypot(
         this.velocity.x,
         this.velocity.z
       );
 
-    this.headBob +=
-      speed * dt;
+    this.bobTimer +=
+      horizontalSpeed * dt;
 
-    const camY =
-      this.position.y +
-      (
-        this.crouch
-          ? .56
-          : .72
-      );
+    const cameraHeight =
+      this.crouched
+        ? .56
+        : .72;
 
     const bob =
       (
-        this.ground &&
-        speed > 1
+        this.grounded &&
+        horizontalSpeed > 1
       )
         ? Math.sin(
-            this.headBob * 7
-          ) * .028
+            this.bobTimer * 7
+          ) * .025
         : 0;
 
     this.game.camera.position.set(
       this.position.x,
-      camY + bob,
+      this.position.y +
+        cameraHeight +
+        bob,
       this.position.z
     );
 
-    const baseFov =
+    const targetFOV =
       this.ads
-        ? lerp(
-            settings.fov,
-            52,
-            .8
-          )
-        : settings.fov;
+        ? settings.fov - 30
+        : this.sprinting
+          ? settings.fov + 2
+          : settings.fov;
 
     this.game.camera.fov =
       lerp(
         this.game.camera.fov,
-        baseFov,
+        targetFOV,
         .08
       );
 
-    this.fireRecoil =
+    this.recoil =
       lerp(
-        this.fireRecoil,
+        this.recoil,
         0,
-        .18
+        .2
       );
 
-    this.game.camera.rotation.x +=
-      this.fireRecoil *
-      (Math.random() - .35);
-
-    this.stepT -= dt;
+    this.stepTimer -=
+      dt;
 
     if (
-      this.ground &&
-      speed > 3 &&
-      this.stepT <= 0
+      this.grounded &&
+      horizontalSpeed > 3 &&
+      this.stepTimer <= 0
     ) {
-      this.stepT =
-        this.sprint
-          ? .26
-          : .42;
+
+      this.stepTimer =
+        this.sprinting
+          ? .27
+          : .43;
 
       audio.step(false);
     }
 
     this.ads =
-      input.mouse.buttons & 2;
+      Boolean(
+        input.mouse.buttons & 2
+      );
+
+    this.updateHUD();
+
+    this.updateCrosshair();
+  }
+
+  updateCrosshair() {
+
+    const crosshair =
+      $('crosshair');
+
+    crosshair.classList.toggle(
+      'ads',
+      this.ads
+    );
+
+    const moving =
+      this.velocity.length();
+
+    const size =
+      clamp(
+        1 +
+        moving * .5 +
+        this.recoil * 25,
+        1,
+        7
+      );
+
+    crosshair.style.transform =
+      `translate(-50%,-50%) scale(${size})`;
   }
 
   takeDamage(
-    dmg,
-    sourcePos
+    damage,
+    source
   ) {
+
     if (!this.alive) {
       return;
     }
 
-    this.health -= dmg;
+    this.health -=
+      damage;
 
     this.game.damageFeedback(
-      sourcePos
+      source
     );
 
-    document.getElementById(
-      'healthValue'
-    ).textContent =
-      Math.ceil(
-        Math.max(
-          0,
-          this.health
-        )
-      );
+    this.updateHUD();
 
-    document.getElementById(
-      'healthBar'
-    ).style.width =
-      clamp(
-        this.health,
-        0,
-        100
-      ) + '%';
-
-    if (this.health <= 0) {
+    if (
+      this.health <= 0
+    ) {
       this.die();
     }
   }
 
   die() {
+
     if (!this.alive) {
       return;
     }
 
     this.alive = false;
 
-    input.unlock();
-
     this.game.stats.deaths++;
 
     this.game.updateScoreboard();
 
-    document.getElementById(
-      'death'
-    ).classList.remove('hidden');
+    input.unlock();
 
-    let t = 2.5;
+    $('death')
+      .classList.remove(
+        'hidden'
+      );
 
-    const tick =
-      setInterval(() => {
-        t -= .5;
+    let countdown =
+      2.5;
 
-        document.getElementById(
-          'deathStats'
-        ).textContent =
-          `Respawning in ${Math.max(
-            0,
-            t
-          ).toFixed(1)}s`;
+    const timer =
+      setInterval(
+        () => {
 
-        if (t <= 0) {
-          clearInterval(tick);
+          countdown -=
+            .5;
 
-          document.getElementById(
-            'death'
-          ).classList.add('hidden');
+          $('deathStats')
+            .textContent =
+            `RESPAWNING IN ${Math.max(
+              0,
+              countdown
+            ).toFixed(1)}s`;
 
-          this.respawn();
-        }
-      }, 500);
+          if (
+            countdown <= 0
+          ) {
+
+            clearInterval(
+              timer
+            );
+
+            $('death')
+              .classList.add(
+                'hidden'
+              );
+
+            this.respawn();
+          }
+
+        },
+        500
+      );
   }
 
   respawn() {
-    const p =
-      this.game.map.nearestSafeSpawn();
 
-    this.reset(p);
+    this.reset(
+      this.game.map.spawnPosition()
+    );
 
-    this.game.weapon.init();
+    this.game.weapon =
+      new WeaponManager(
+        this.game
+      );
+
+    this.game.weapon.initialize();
 
     input.lock();
   }
 }
 
-class EnemyAI {
-  constructor(game, id) {
-    this.game = game;
-    this.id = id;
+/* =========================================================
+   BOT
+========================================================= */
+
+class Bot {
+
+  constructor(
+    game,
+    id
+  ) {
+
+    this.game =
+      game;
+
+    this.id =
+      id;
 
     this.group =
-      ModelFactory.character(
+      this.makeModel(
         id % 2
       );
 
     this.group.position.copy(
-      game.map.nearestSafeSpawn()
+      game.map.spawnPosition()
     );
 
-    this.group.scale.setScalar(.98);
-
-    game.scene.add(
+    this.game.scene.add(
       this.group
     );
 
     this.health = 100;
-    this.maxHealth = 100;
     this.alive = true;
 
-    this.state = 'PATROL';
+    this.state =
+      'PATROL';
+
+    this.target =
+      new THREE.Vector3();
+
+    this.fireTimer =
+      rand(.4,1.2);
 
     this.weapon =
       WEAPONS[
@@ -2510,93 +3339,276 @@ class EnemyAI {
         ])
       ];
 
-    this.fireT =
-      rand(.4, 1);
-
-    this.reloadT = 0;
-
-    this.target =
-      new THREE.Vector3();
-
     this.hitMeshes = [];
 
-    this.group.traverse(o => {
-      if (o.isMesh) {
-        if (
-          o.geometry.type.includes(
-            'Sphere'
-          ) ||
-          o.position.y > 1.4
-        ) {
-          o.userData.part = 'head';
-        } else if (
-          o.position.y < .8
-        ) {
-          o.userData.part = 'limb';
-        } else {
-          o.userData.part = 'body';
+    this.group.traverse(
+      object => {
+
+        if (!object.isMesh) {
+          return;
         }
 
-        o.userData.bot = this;
+        let part =
+          'body';
 
-        this.hitMeshes.push(o);
+        if (
+          object.position.y >
+          1.4
+        ) {
+          part = 'head';
+        } else if (
+          object.position.y <
+          .8
+        ) {
+          part = 'limb';
+        }
+
+        object.userData.bot =
+          this;
+
+        object.userData.part =
+          part;
+
+        this.hitMeshes.push(
+          object
+        );
       }
-    });
+    );
+  }
+
+  makeModel(
+    team
+  ) {
+
+    const root =
+      new THREE.Group();
+
+    const skin =
+      Models.material(
+        0x8b5d43,
+        .96,
+        0
+      );
+
+    const fabric =
+      Models.material(
+        team
+          ? 0x40494a
+          : 0x51483d,
+        .86,
+        .02
+      );
+
+    const armor =
+      Models.material(
+        0x242a2c,
+        .68,
+        .12
+      );
+
+    const head =
+      new THREE.Mesh(
+        new THREE.SphereGeometry(
+          .22,
+          20,
+          16
+        ),
+        skin
+      );
+
+    head.position.y =
+      1.72;
+
+    head.castShadow =
+      true;
+
+    root.add(
+      head
+    );
+
+    const torso =
+      new THREE.Mesh(
+        new THREE.CapsuleGeometry(
+          .28,
+          .62,
+          7,
+          12
+        ),
+        fabric
+      );
+
+    torso.position.y =
+      1.1;
+
+    torso.castShadow =
+      true;
+
+    root.add(
+      torso
+    );
+
+    const vest =
+      Models.box(
+        .43,
+        .5,
+        .25,
+        0x242a2c,
+        .72,
+        .12
+      );
+
+    vest.position.set(
+      0,
+      1.12,
+      -.02
+    );
+
+    root.add(
+      vest
+    );
+
+    for (
+      const side of [-1,1]
+    ) {
+
+      const arm =
+        new THREE.Mesh(
+          new THREE.CapsuleGeometry(
+            .10,
+            .48,
+            5,
+            10
+          ),
+          fabric
+        );
+
+      arm.position.set(
+        side * .4,
+        1.15,
+        0
+      );
+
+      arm.rotation.z =
+        side * .12;
+
+      arm.castShadow =
+        true;
+
+      root.add(
+        arm
+      );
+
+      const leg =
+        new THREE.Mesh(
+          new THREE.CapsuleGeometry(
+            .12,
+            .58,
+            5,
+            10
+          ),
+          fabric
+        );
+
+      leg.position.set(
+        side * .14,
+        .50,
+        0
+      );
+
+      leg.castShadow =
+        true;
+
+      root.add(
+        leg
+      );
+
+      const boot =
+        Models.box(
+          .18,
+          .12,
+          .30,
+          0x15191a,
+          .9,
+          .04
+        );
+
+      boot.position.set(
+        side * .14,
+        .12,
+        -.05
+      );
+
+      root.add(
+        boot
+      );
+    }
+
+    return root;
   }
 
   takeDamage(
-    dmg,
-    source
+    damage,
+    attacker
   ) {
-    if (!this.alive) {
+
+    if (
+      !this.alive
+    ) {
       return false;
     }
 
-    this.health -= dmg;
+    this.health -=
+      damage;
 
-    const pos =
+    this.game.vfx.impact(
       this.group.position
         .clone()
         .add(
           new THREE.Vector3(
             0,
-            1.3,
+            1.25,
             0
           )
-        );
-
-    this.game.vfx.hit(
-      pos,
+        ),
       this.health <= 0
     );
 
-    if (this.health <= 0) {
-      this.die(source);
-      return true;
-    }
-
-    this.state = 'ATTACK';
+    this.state =
+      'ATTACK';
 
     this.target.copy(
-      source.position
+      attacker.position
     );
+
+    if (
+      this.health <= 0
+    ) {
+
+      this.die(
+        attacker
+      );
+
+      return true;
+    }
 
     return false;
   }
 
-  die(killer) {
-    this.alive = false;
-    this.group.visible = false;
+  die(
+    killer
+  ) {
 
-    this.game.stats.kills++;
+    this.alive = false;
+
+    this.group.visible =
+      false;
+
     this.game.teamScore[0]++;
 
+    this.game.stats.kills++;
+
     this.game.addKill(
-      `${killer.name || 'PLAYER'} > ${
-        this.id % 2
-          ? 'RAVEN'
-          : 'WARDEN'
-      }`
+      `YOU > ${this.codename()}`
     );
 
     this.game.updateScore();
@@ -2605,23 +3617,41 @@ class EnemyAI {
       () => {
         this.respawn();
       },
-      rand(3,6)
+      rand(3,6) * 1000
     );
   }
 
   respawn() {
+
     this.health = 100;
+
     this.alive = true;
 
     this.group.position.copy(
-      this.game.map.nearestSafeSpawn()
+      this.game.map.spawnPosition()
     );
 
-    this.group.visible = true;
-    this.state = 'PATROL';
+    this.group.visible =
+      true;
+
+    this.state =
+      'PATROL';
+  }
+
+  codename() {
+
+    const side =
+      this.id % 2
+        ? 'RAVEN'
+        : 'WARDEN';
+
+    return `${side}-${String(
+      this.id + 11
+    ).padStart(2,'0')}`;
   }
 
   canSeePlayer() {
+
     const eye =
       this.group.position
         .clone()
@@ -2633,20 +3663,34 @@ class EnemyAI {
           )
         );
 
-    const to =
+    const target =
       this.game.player.position
+        .clone()
+        .add(
+          new THREE.Vector3(
+            0,
+            .5,
+            0
+          )
+        );
+
+    const direction =
+      target
         .clone()
         .sub(eye);
 
-    const dist = to.length();
+    const distance =
+      direction.length();
 
-    if (dist > 42) {
+    if (
+      distance > 42
+    ) {
       return false;
     }
 
-    to.normalize();
+    direction.normalize();
 
-    const forward =
+    const facing =
       new THREE.Vector3(
         0,
         0,
@@ -2655,19 +3699,22 @@ class EnemyAI {
         this.group.quaternion
       );
 
-    if (forward.dot(to) < .12) {
+    if (
+      facing.dot(direction) <
+      .05
+    ) {
       return false;
     }
 
     const ray =
       new THREE.Raycaster(
         eye,
-        to,
+        direction,
         0,
-        dist
+        distance
       );
 
-    const blockers =
+    const obstacles =
       ray.intersectObjects(
         this.game.map.colliders.map(
           c => c.mesh
@@ -2675,91 +3722,148 @@ class EnemyAI {
         false
       );
 
-    return blockers.length === 0;
+    return obstacles.length === 0;
   }
 
-  update(dt) {
-    if (!this.alive) {
+  update(
+    dt
+  ) {
+
+    if (
+      !this.alive
+    ) {
       return;
     }
 
-    const p =
-      this.game.player.position;
+    const player =
+      this.game.player;
 
-    const dist =
-      this.group.position.distanceTo(p);
+    const distance =
+      this.group.position.distanceTo(
+        player.position
+      );
 
-    if (this.canSeePlayer()) {
+    if (
+      this.canSeePlayer()
+    ) {
+
       this.state =
-        dist < 30
+        distance < 34
           ? 'ATTACK'
           : 'SEARCH';
 
-      this.target.copy(p);
-
-    } else if (
-      this.state === 'ATTACK'
-    ) {
-      this.state = 'SEARCH';
+      this.target.copy(
+        player.position
+      );
     }
 
-    if (this.state === 'PATROL') {
+    if (
+      this.state ===
+      'PATROL'
+    ) {
+
       if (
         this.group.position.distanceTo(
           this.target
         ) < 1
       ) {
+
         this.target.copy(
-          this.game.map.nearestSafeSpawn()
+          this.game.map.spawnPosition()
         );
       }
-    }
 
-    if (
-      this.state === 'SEARCH' &&
-      this.group.position.distanceTo(
-        this.target
-      ) > 1
-    ) {
-      this.moveToward(
+      this.move(
         this.target,
         dt,
         2.3
       );
-    }
 
-    if (
-      this.state === 'ATTACK'
+    } else if (
+      this.state ===
+      'SEARCH'
     ) {
-      this.moveToward(
+
+      this.move(
         this.target,
         dt,
-        2.0
+        2.6
       );
 
-      this.aimAt(p);
+    } else if (
+      this.state ===
+      'ATTACK'
+    ) {
 
-      this.fireT -= dt;
+      this.face(
+        player.position
+      );
 
       if (
-        this.fireT <= 0 &&
-        dist < 34
+        distance > 16
       ) {
-        this.fireT =
-          60 / this.weapon.rate +
-          rand(.08, .3);
 
-        this.shootAtPlayer();
+        this.move(
+          player.position,
+          dt,
+          2
+        );
+
+      } else {
+
+        const side =
+          new THREE.Vector3(
+            0,
+            0,
+            1
+          ).applyQuaternion(
+            this.group.quaternion
+          );
+
+        const strafe =
+          Math.sin(
+            performance.now() *
+            .0012 +
+            this.id
+          );
+
+        this.move(
+          this.group.position
+            .clone()
+            .addScaledVector(
+              side,
+              strafe
+            ),
+          dt,
+          .9
+        );
+      }
+
+      this.fireTimer -=
+        dt;
+
+      if (
+        this.fireTimer <= 0 &&
+        distance < 36
+      ) {
+
+        this.fireTimer =
+          60 /
+          this.weapon.rate +
+          rand(.1,.35);
+
+        this.shootPlayer();
       }
     }
   }
 
-  moveToward(
+  move(
     target,
     dt,
     speed
   ) {
-    const dir =
+
+    const direction =
       new THREE.Vector3(
         target.x -
           this.group.position.x,
@@ -2768,43 +3872,56 @@ class EnemyAI {
           this.group.position.z
       );
 
-    if (dir.lengthSq() > .01) {
-      dir.normalize();
-
-      const next =
-        this.group.position
-          .clone()
-          .addScaledVector(
-            dir,
-            speed * dt
-          );
-
-      if (
-        !this.game.map.collides(
-          new THREE.Vector3(
-            next.x,
-            .5,
-            next.z
-          ),
-          .3
-        )
-      ) {
-        this.group.position.x =
-          next.x;
-
-        this.group.position.z =
-          next.z;
-      }
+    if (
+      direction.lengthSq() <
+      .01
+    ) {
+      return;
     }
+
+    direction.normalize();
+
+    const next =
+      this.group.position
+        .clone()
+        .addScaledVector(
+          direction,
+          speed * dt
+        );
+
+    if (
+      !this.game.map.collision(
+        new THREE.Vector3(
+          next.x,
+          .5,
+          next.z
+        ),
+        .3
+      )
+    ) {
+
+      this.group.position.x =
+        next.x;
+
+      this.group.position.z =
+        next.z;
+    }
+
+    this.face(
+      target
+    );
   }
 
-  aimAt(p) {
+  face(
+    target
+  ) {
+
     const dx =
-      p.x -
+      target.x -
       this.group.position.x;
 
     const dz =
-      p.z -
+      target.z -
       this.group.position.z;
 
     this.group.rotation.y =
@@ -2814,104 +3931,105 @@ class EnemyAI {
       );
   }
 
-  shootAtPlayer() {
-    const ray =
-      new THREE.Raycaster();
+  shootPlayer() {
 
-    const eye =
+    const origin =
       this.group.position
         .clone()
         .add(
           new THREE.Vector3(
             0,
-            1.4,
+            1.42,
             0
           )
         );
 
     const target =
-      predictPlayer(
-        this.game.player
-      );
+      this.game.player.position
+        .clone()
+        .add(
+          new THREE.Vector3(
+            0,
+            .58,
+            0
+          )
+        );
 
-    const dir =
+    const direction =
       target
-        .sub(eye)
+        .sub(origin)
         .normalize();
 
-    dir.x +=
-      rand(-.04, .04);
+    direction.x +=
+      rand(-.028,.028);
 
-    dir.z +=
-      rand(-.04, .04);
+    direction.z +=
+      rand(-.028,.028);
 
-    ray.set(
-      eye,
-      dir
-    );
+    const ray =
+      new THREE.Raycaster(
+        origin,
+        direction,
+        0,
+        80
+      );
 
-    const hit =
+    const playerTarget =
+      this.game.playerMesh;
+
+    const blockers =
       ray.intersectObjects(
-        [
-          this.game.map.colliders.map(
-            c => c.mesh
-          ),
-          this.game.playerMesh
-        ].flat(),
+        this.game.map.colliders.map(
+          c => c.mesh
+        ),
         false
       )[0];
 
-    if (
-      hit &&
-      hit.object ===
-        this.game.playerMesh
-    ) {
-      this.game.player.takeDamage(
-        this.weapon.damage * .48,
-        this.group.position
-      );
+    if (blockers) {
+      return;
     }
+
+    this.game.player.takeDamage(
+      this.weapon.damage * .48,
+      this.group.position
+    );
   }
 }
 
-function predictPlayer(p) {
-  return p.position
-    .clone()
-    .add(
-      new THREE.Vector3(
-        0,
-        .65,
-        0
-      )
-    );
-}
+/* =========================================================
+   GAME
+========================================================= */
 
 class Game {
+
   constructor() {
+
     this.scene =
       new THREE.Scene();
 
     this.camera =
       new THREE.PerspectiveCamera(
         settings.fov,
-        innerWidth / innerHeight,
+        innerWidth /
+          innerHeight,
         .05,
         250
       );
 
     this.renderer =
       new THREE.WebGLRenderer({
-        antialias: true,
-        powerPreference:
-          'high-performance'
+        antialias:true,
+        powerPreference:'high-performance'
       });
 
     this.renderer.setPixelRatio(
       Math.min(
         devicePixelRatio,
         settings.quality === 'high'
-          ? 1.75
-          : 1.2
+          ? 1.7
+          : settings.quality === 'medium'
+            ? 1.3
+            : 1
       )
     );
 
@@ -2926,20 +4044,27 @@ class Game {
     this.renderer.shadowMap.type =
       THREE.PCFSoftShadowMap;
 
-    document.getElementById(
-      'game'
-    ).replaceWith(
+    this.renderer.outputColorSpace =
+      THREE.SRGBColorSpace;
+
+    this.renderer.toneMapping =
+      THREE.ACESFilmicToneMapping;
+
+    this.renderer.toneMappingExposure =
+      1.05;
+
+    const canvas =
+      $('game');
+
+    canvas.replaceWith(
       this.renderer.domElement
     );
 
     this.renderer.domElement.id =
       'game';
 
-    this.player =
-      new Player(this);
-
     this.camera.position.copy(
-      this.player.position
+      this.scene.position
     );
 
     this.scene.add(
@@ -2956,6 +4081,11 @@ class Game {
         this.scene
       );
 
+    this.player =
+      new Player(
+        this
+      );
+
     this.bots = [];
 
     this.weapon =
@@ -2964,12 +4094,12 @@ class Game {
       );
 
     this.kit =
-      kits[selectedKit];
+      KITS[selectedKit];
 
     this.stats = {
-      kills: 0,
-      deaths: 0,
-      score: 0
+      kills:0,
+      deaths:0,
+      score:0
     };
 
     this.teamScore = [
@@ -2977,173 +4107,192 @@ class Game {
       0
     ];
 
-    this.matchTime = 600;
-    this.running = false;
-    this.paused = false;
-    this.debug = false;
+    this.matchTime =
+      600;
 
-    this.last =
+    this.running =
+      false;
+
+    this.paused =
+      false;
+
+    this.debug =
+      false;
+
+    this.lastTime =
       performance.now();
 
     this.playerMesh =
-      ModelFactory.character(0);
-
-    this.playerMesh.visible =
-      false;
+      new THREE.Group();
 
     this.scene.add(
       this.playerMesh
     );
 
-    this.buildArenaProps();
-    this.buildUI();
+    this.bindUI();
+  }
 
-    addEventListener(
-      'resize',
-      () => this.resize()
+  bindUI() {
+
+    document.querySelectorAll(
+      '[data-action]'
+    ).forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () => {
+
+            audio.init();
+
+            this.action(
+              button.dataset.action
+            );
+          }
+        );
+      }
+    );
+
+    this.buildLoadoutUI();
+    this.buildArmoryUI();
+    this.bindSettings();
+
+    this.renderer.domElement.addEventListener(
+      'click',
+      () => {
+
+        if (
+          this.running &&
+          !this.paused &&
+          !input.pointerLocked
+        ) {
+          input.lock();
+        }
+      }
     );
   }
 
-  buildArenaProps() {
-    for (let i = 0; i < 12; i++) {
-      const p =
-        new THREE.PointLight(
-          0xffbf80,
-          .8,
-          10
+  buildLoadoutUI() {
+
+    const container =
+      $('loadoutGrid');
+
+    container.innerHTML = '';
+
+    KITS.forEach(
+      (kit,index) => {
+
+        const card =
+          document.createElement(
+            'div'
+          );
+
+        card.className =
+          'loadout-card' +
+          (
+            index === selectedKit
+              ? ' active'
+              : ''
+          );
+
+        card.innerHTML = `
+          <h3>${kit.name}</h3>
+
+          <div class="primary-name">
+            ${WEAPONS[kit.primary].name}
+          </div>
+
+          <small>
+            ${WEAPONS[kit.secondary].name}
+            <br>
+            ${kit.tactical.toUpperCase()}
+            /
+            ${kit.lethal.toUpperCase()}
+          </small>
+        `;
+
+        card.onclick = () => {
+
+          selectedKit =
+            index;
+
+          this.kit =
+            kit;
+
+          this.buildLoadoutUI();
+
+          audio.ui();
+        };
+
+        container.appendChild(
+          card
         );
-
-      p.position.set(
-        rand(-35,35),
-        rand(2.5,6),
-        rand(-35,35)
-      );
-
-      this.scene.add(p);
-    }
+      }
+    );
   }
 
-  buildUI() {
-    this.populateLoadout();
-    this.populateArmory();
-    this.bindSettings();
+  buildArmoryUI() {
 
-    document
-      .querySelectorAll(
-        '[data-action]'
-      )
-      .forEach(b => {
-        b.addEventListener(
-          'click',
-          () => this.action(
-            b.dataset.action
-          )
-        );
-      });
-  }
-
-  populateLoadout() {
-    const c =
-      document.getElementById(
-        'loadoutGrid'
-      );
-
-    c.innerHTML = '';
-
-    kits.forEach((k, i) => {
-      const d =
-        document.createElement(
-          'div'
-        );
-
-      d.className =
-        'loadout-card' +
-        (
-          i === selectedKit
-            ? ' active'
-            : ''
-        );
-
-      d.innerHTML = `
-        <h3>${k.name}</h3>
-        <div>
-          <b>${WEAPONS[k.primary].name}</b>
-        </div>
-        <small>
-          ${WEAPONS[k.secondary].name}
-          <br>
-          ${k.tactical.toUpperCase()}
-          /
-          ${k.lethal.toUpperCase()}
-        </small>
-      `;
-
-      d.onclick = () => {
-        selectedKit = i;
-        this.kit = k;
-        this.populateLoadout();
-        audio.ui();
-      };
-
-      c.appendChild(d);
-    });
-  }
-
-  populateArmory() {
     const tabs =
-      document.getElementById(
-        'weaponTabs'
-      );
+      $('weaponTabs');
 
     tabs.innerHTML = '';
 
     Object.keys(
       WEAPONS
-    ).forEach(k => {
-      const b =
-        document.createElement(
-          'button'
+    ).forEach(
+      key => {
+
+        const button =
+          document.createElement(
+            'button'
+          );
+
+        button.textContent =
+          WEAPONS[key].name;
+
+        button.onclick =
+          () =>
+            this.showArmory(
+              key
+            );
+
+        tabs.appendChild(
+          button
         );
-
-      b.textContent =
-        WEAPONS[k].name;
-
-      b.onclick = () =>
-        this.showArmory(k);
-
-      tabs.appendChild(b);
-    });
+      }
+    );
 
     this.showArmory(
       'carbine'
     );
   }
 
-  showArmory(k) {
-    const w =
-      WEAPONS[k];
+  showArmory(
+    key
+  ) {
 
-    document.getElementById(
-      'armoryTitle'
-    ).textContent =
-      w.name;
+    const weapon =
+      WEAPONS[key];
+
+    $('armoryTitle')
+      .textContent =
+      weapon.name;
 
     const host =
-      document.getElementById(
-        'armoryPreview'
-      );
+      $('armoryPreview');
 
     host.innerHTML = '';
 
-    const sc =
+    const scene =
       new THREE.Scene();
 
-    sc.background =
+    scene.background =
       new THREE.Color(
-        0x101517
+        0x101618
       );
 
-    const cam =
+    const camera =
       new THREE.PerspectiveCamera(
         40,
         2,
@@ -3151,332 +4300,415 @@ class Game {
         20
       );
 
-    cam.position.set(
-      2,
-      1.5,
+    camera.position.set(
+      2.1,
+      1.35,
       3.3
     );
 
-    cam.lookAt(
+    camera.lookAt(
       0,
       0,
       -.3
     );
 
-    const r =
+    const renderer =
       new THREE.WebGLRenderer({
-        antialias: true
+        antialias:true
       });
 
-    r.setPixelRatio(1);
-
-    r.setSize(
+    renderer.setSize(
       Math.max(
-        320,
+        300,
         host.clientWidth
       ),
-      340
+      360
     );
+
+    renderer.setPixelRatio(1);
 
     host.appendChild(
-      r.domElement
+      renderer.domElement
     );
 
-    const l =
+    const hemi =
       new THREE.HemisphereLight(
-        0xcad7e0,
-        0x192023,
-        2
+        0xd5e0e7,
+        0x182024,
+        2.1
       );
 
-    sc.add(l);
+    scene.add(
+      hemi
+    );
 
-    const d =
+    const light =
       new THREE.DirectionalLight(
         0xffffff,
         2
       );
 
-    d.position.set(
+    light.position.set(
       3,
       5,
       2
     );
 
-    sc.add(d);
+    scene.add(
+      light
+    );
 
-    const g =
-      ModelFactory.weapon(
-        w.model
+    const model =
+      Models.weapon(
+        weapon.model
       );
 
-    g.rotation.y =
-      -.65;
+    model.rotation.y =
+      -.7;
 
-    sc.add(g);
+    scene.add(
+      model
+    );
 
-    const spin = () => {
-      g.rotation.y += .006;
-      r.render(
-        sc,
-        cam
-      );
-      requestAnimationFrame(
-        spin
-      );
-    };
+    const render =
+      () => {
 
-    spin();
-
-    const s =
-      document.getElementById(
-        'armoryStats'
-      );
-
-    s.innerHTML = '';
-
-    [
-      ['Damage', w.damage / 60 * 100],
-      [
-        'Accuracy',
-        (1 - w.spread * 5) * 100
-      ],
-      [
-        'Range',
-        clamp(
-          w.range / 170 * 100,
-          0,
-          100
-        )
-      ],
-      [
-        'Fire rate',
-        clamp(
-          w.rate / 1000 * 100,
-          0,
-          100
-        )
-      ],
-      [
-        'Mobility',
-        w.cat === 'pistol'
-          ? 92
-          : (
-            w.cat === 'primary' &&
-            w.model === 'marksman'
-              ? 62
-              : 76
+        if (
+          !document.body.contains(
+            renderer.domElement
           )
-      ],
+        ) {
+          renderer.dispose();
+          return;
+        }
+
+        model.rotation.y +=
+          .006;
+
+        renderer.render(
+          scene,
+          camera
+        );
+
+        requestAnimationFrame(
+          render
+        );
+      };
+
+    render();
+
+    const stats =
+      $('armoryStats');
+
+    stats.innerHTML = '';
+
+    const values = [
       [
-        'Recoil',
+        'DAMAGE',
+        weapon.damage /
+        60 * 100
+      ],
+
+      [
+        'ACCURACY',
+        (1 -
+          weapon.spread * 5) *
+          100
+      ],
+
+      [
+        'RANGE',
+        weapon.range /
+        175 *
+        100
+      ],
+
+      [
+        'FIRE RATE',
+        weapon.rate /
+        1000 *
+        100
+      ],
+
+      [
+        'MOBILITY',
+        weapon.category ===
+          'PISTOL'
+          ? 92
+          : weapon.model ===
+            'marksman'
+              ? 62
+              : 78
+      ],
+
+      [
+        'CONTROL',
         clamp(
-          100 - w.recoil * 800,
+          100 -
+          weapon.recoil *
+          780,
           20,
           96
         )
       ]
-    ].forEach(
-      ([name, val]) => {
-        const d =
+    ];
+
+    values.forEach(
+      ([label,value]) => {
+
+        const row =
           document.createElement(
             'div'
           );
 
-        d.className =
+        row.className =
           'stat-row';
 
-        d.innerHTML = `
-          <span>${name}</span>
+        row.innerHTML = `
+          <span>${label}</span>
+
           <div class="stat-bar">
             <span style="width:${clamp(
-              val,
+              value,
               0,
               100
             )}%"></span>
           </div>
+
           <b>${Math.round(
-            clamp(val,0,100)
+            clamp(value,0,100)
           )}</b>
         `;
 
-        s.appendChild(d);
+        stats.appendChild(
+          row
+        );
       }
     );
   }
 
   bindSettings() {
-    const map = {
-      sens: 'sensitivity',
-      adsSens: 'adsSensitivity',
-      fov: 'fov',
-      masterVol: 'master'
-    };
 
-    for (
-      const [id, k]
-      of Object.entries(map)
-    ) {
-      const e =
-        document.getElementById(
-          id
-        );
+    const ranges = [
+      ['sens','sensitivity'],
+      ['adsSens','adsSensitivity'],
+      ['fov','fov'],
+      ['masterVol','master']
+    ];
 
-      e.value =
-        settings[k];
+    ranges.forEach(
+      ([id,key]) => {
 
-      e.addEventListener(
-        'input',
-        () => {
-          settings[k] =
-            Number(e.value);
+        const element =
+          $(id);
 
-          this.saveSettings();
+        element.value =
+          settings[key];
 
-          if (audio.master) {
-            audio.master.gain.value =
-              settings.master;
+        element.addEventListener(
+          'input',
+          () => {
+
+            settings[key] =
+              Number(
+                element.value
+              );
+
+            this.saveSettings();
+
+            if (
+              audio.master
+            ) {
+              audio.master.gain.value =
+                settings.master;
+            }
           }
-
-          this.camera.fov =
-            settings.fov;
-        }
-      );
-    }
-
-    for (
-      const [id, k]
-      of [
-        ['quality','quality'],
-        ['invert','invert'],
-        ['motion','motion'],
-        ['vsync','vsync']
-      ]
-    ) {
-      const e =
-        document.getElementById(
-          id
         );
-
-      e.value =
-        settings[k];
-
-      if (
-        e.type === 'checkbox'
-      ) {
-        e.checked =
-          settings[k];
       }
+    );
 
-      e.addEventListener(
-        'change',
-        () => {
-          settings[k] =
-            e.type === 'checkbox'
-              ? e.checked
-              : e.value;
+    const others = [
+      ['quality','quality'],
+      ['invert','invert'],
+      ['motion','motion'],
+      ['vsync','vsync']
+    ];
 
-          this.saveSettings();
+    others.forEach(
+      ([id,key]) => {
+
+        const element =
+          $(id);
+
+        if (
+          element.type ===
+          'checkbox'
+        ) {
+
+          element.checked =
+            settings[key];
+
+        } else {
+
+          element.value =
+            settings[key];
         }
-      );
-    }
+
+        element.addEventListener(
+          'change',
+          () => {
+
+            settings[key] =
+              element.type ===
+              'checkbox'
+                ? element.checked
+                : element.value;
+
+            this.saveSettings();
+          }
+        );
+      }
+    );
   }
 
   saveSettings() {
+
     localStorage.setItem(
-      'frontline-settings',
+      'crazeops-settings',
       JSON.stringify(
         settings
       )
     );
   }
 
-  action(a) {
-    audio.init();
+  action(
+    action
+  ) {
 
-    if (a === 'play') {
+    if (
+      action === 'play'
+    ) {
+
       this.startMatch();
+      return;
     }
 
     if (
-      a === 'loadout' ||
-      a === 'armory' ||
-      a === 'settings' ||
-      a === 'controls'
-    ) {
-      this.hideScreens();
-
-      document.getElementById(
-        a
-      ).classList.add(
-        'active'
-      );
-    }
-
-    if (a === 'back') {
-      this.hideScreens();
-
-      document.getElementById(
-        'menu'
-      ).classList.add(
-        'active'
-      );
-    }
-
-    if (a === 'resume') {
-      this.paused = false;
-
-      document.getElementById(
-        'pause'
-      ).classList.add(
-        'hidden'
-      );
-
-      input.lock();
-    }
-
-    if (a === 'mainMenu') {
-      this.stopMatch();
-      this.hideScreens();
-
-      document.getElementById(
-        'menu'
-      ).classList.add(
-        'active'
-      );
-    }
-  }
-
-  hideScreens() {
-    for (
-      const id of [
-        'menu',
+      [
         'loadout',
         'armory',
         'settings',
         'controls'
-      ]
+      ].includes(action)
     ) {
-      document.getElementById(
-        id
-      ).classList.remove(
-        'active'
-      );
+
+      this.hideScreens();
+
+      $(action)
+        .classList.add(
+          'active'
+        );
+
+      return;
+    }
+
+    if (
+      action === 'back'
+    ) {
+
+      this.hideScreens();
+
+      $('menu')
+        .classList.add(
+          'active'
+        );
+
+      return;
+    }
+
+    if (
+      action === 'capture'
+    ) {
+
+      $('capture')
+        .classList.add(
+          'hidden'
+        );
+
+      input.lock();
+
+      return;
+    }
+
+    if (
+      action === 'resume'
+    ) {
+
+      this.paused =
+        false;
+
+      $('pause')
+        .classList.add(
+          'hidden'
+        );
+
+      input.lock();
+
+      return;
+    }
+
+    if (
+      action === 'mainMenu'
+    ) {
+
+      this.stopMatch();
+
+      this.hideScreens();
+
+      $('menu')
+        .classList.add(
+          'active'
+        );
     }
   }
 
-  startMatch() {
-    this.kit =
-      kits[selectedKit];
+  hideScreens() {
 
-    this.running = true;
-    this.paused = false;
-    this.matchTime = 600;
+    [
+      'menu',
+      'loadout',
+      'armory',
+      'settings',
+      'controls'
+    ].forEach(
+      id => {
+
+        $(id)
+          .classList.remove(
+            'active'
+          );
+      }
+    );
+  }
+
+  startMatch() {
+
+    this.kit =
+      KITS[selectedKit];
+
+    this.running =
+      true;
+
+    this.paused =
+      false;
+
+    this.matchTime =
+      600;
 
     this.stats = {
-      kills: 0,
-      deaths: 0,
-      score: 0
+      kills:0,
+      deaths:0,
+      score:0
     };
 
     this.teamScore = [
@@ -3486,20 +4718,18 @@ class Game {
 
     this.hideScreens();
 
-    document.getElementById(
-      'hud'
-    ).classList.remove(
-      'hidden'
-    );
+    $('hud')
+      .classList.remove(
+        'hidden'
+      );
 
-    document.getElementById(
-      'matchEnd'
-    ).classList.add(
-      'hidden'
-    );
+    $('matchEnd')
+      .classList.add(
+        'hidden'
+      );
 
     this.player.reset(
-      this.map.nearestSafeSpawn()
+      this.map.spawnPosition()
     );
 
     this.weapon =
@@ -3507,60 +4737,40 @@ class Game {
         this
       );
 
-    this.weapon.init();
+    this.weapon.initialize();
 
     this.spawnBots();
 
-    input.lock();
+    $('capture')
+      .classList.remove(
+        'hidden'
+      );
+
+    this.updateScore();
+    this.updateScoreboard();
 
     audio.init();
-
-    this.updateScoreboard();
-    this.updateScore();
-  }
-
-  stopMatch() {
-    this.running = false;
-
-    input.unlock();
-
-    document.getElementById(
-      'hud'
-    ).classList.add(
-      'hidden'
-    );
-
-    document.getElementById(
-      'pause'
-    ).classList.add(
-      'hidden'
-    );
-
-    document.getElementById(
-      'death'
-    ).classList.add(
-      'hidden'
-    );
-
-    for (
-      const b of this.bots
-    ) {
-      this.scene.remove(
-        b.group
-      );
-    }
-
-    this.bots = [];
   }
 
   spawnBots() {
+
+    this.bots.forEach(
+      bot =>
+        this.scene.remove(
+          bot.group
+        )
+    );
+
+    this.bots = [];
+
     for (
-      let i = 0;
-      i < 9;
+      let i=0;
+      i<9;
       i++
     ) {
+
       this.bots.push(
-        new EnemyAI(
+        new Bot(
           this,
           i
         )
@@ -3568,24 +4778,97 @@ class Game {
     }
   }
 
-  addKill(text) {
-    const e =
+  stopMatch() {
+
+    this.running =
+      false;
+
+    this.paused =
+      false;
+
+    input.unlock();
+
+    $('hud')
+      .classList.add(
+        'hidden'
+      );
+
+    $('pause')
+      .classList.add(
+        'hidden'
+      );
+
+    $('capture')
+      .classList.add(
+        'hidden'
+      );
+
+    $('death')
+      .classList.add(
+        'hidden'
+      );
+
+    this.bots.forEach(
+      bot =>
+        this.scene.remove(
+          bot.group
+        )
+    );
+
+    this.bots = [];
+  }
+
+  showWeaponToast(
+    text
+  ) {
+
+    const toast =
+      $('weaponToast');
+
+    toast.textContent =
+      text;
+
+    toast.classList.add(
+      'on'
+    );
+
+    clearTimeout(
+      this.toastTimer
+    );
+
+    this.toastTimer =
+      setTimeout(
+        () =>
+          toast.classList.remove(
+            'on'
+          ),
+        850
+      );
+  }
+
+  addKill(
+    text
+  ) {
+
+    const element =
       document.createElement(
         'div'
       );
 
-    e.className =
+    element.className =
       'kill-item';
 
-    e.textContent =
+    element.textContent =
       text;
 
-    document.getElementById(
-      'killFeed'
-    ).appendChild(e);
+    $('killFeed')
+      .appendChild(
+        element
+      );
 
     setTimeout(
-      () => e.remove(),
+      () =>
+        element.remove(),
       2800
     );
   }
@@ -3594,28 +4877,30 @@ class Game {
     head,
     killed
   ) {
-    const h =
-      document.getElementById(
-        'hitmarker'
-      );
 
-    h.classList.add(
+    const marker =
+      $('hitmarker');
+
+    marker.classList.add(
       'hit'
     );
 
     setTimeout(
       () =>
-        h.classList.remove(
+        marker.classList.remove(
           'hit'
         ),
-      95
+      90
     );
 
     head
-      ? audio.head()
+      ? audio.headshot()
       : audio.hit();
 
-    if (killed) {
+    if (
+      killed
+    ) {
+
       this.showWeaponToast(
         'ELIMINATION +100'
       );
@@ -3623,445 +4908,71 @@ class Game {
   }
 
   damageFeedback(
-    pos
+    source
   ) {
-    const a =
+
+    const arrow =
       document.createElement(
         'div'
       );
 
-    a.className =
+    arrow.className =
       'damage-arrow';
 
-    a.textContent = '▼';
+    arrow.textContent =
+      '▼';
 
-    document.getElementById(
-      'damageDir'
-    ).appendChild(a);
-
-    setTimeout(
-      () => a.remove(),
-      300
-    );
-
-    const d =
-      document.getElementById(
-        'damageVignette'
+    $('damageDir')
+      .appendChild(
+        arrow
       );
-
-    d.style.opacity = '.8';
 
     setTimeout(
       () =>
-        d.style.opacity = '0',
+        arrow.remove(),
+      300
+    );
+
+    const vignette =
+      $('damageVignette');
+
+    vignette.style.opacity =
+      '.85';
+
+    setTimeout(
+      () =>
+        vignette.style.opacity =
+          '0',
       180
     );
   }
 
-  updateScore() {
-    document.getElementById(
-      'scoreMini'
-    ).textContent =
-      `${this.teamScore[0]} — ${this.teamScore[1]}`;
+  throwGrenade(
+    type
+  ) {
 
-    if (
-      this.teamScore[0] >= 30
-    ) {
-      this.endMatch(
-        true
-      );
-    }
-  }
-
-  updateScoreboard() {
-    const rows =
-      document.getElementById(
-        'scoreRows'
-      );
-
-    const entries = [
-      {
-        n: 'YOU',
-        k: this.stats.kills,
-        d: this.stats.deaths,
-        s: this.stats.kills * 100
-      }
-    ];
-
-    for (
-      const b of this.bots
-    ) {
-      entries.push({
-        n:
-          `${b.id % 2 ? 'RAVEN' : 'WARDEN'}-${
-            String(b.id + 11).padStart(
-              2,
-              '0'
-            )
-          }`,
-        k:
-          b.alive
-            ? rand(2,14) | 0
-            : rand(4,16) | 0,
-        d:
-          rand(2,12) | 0,
-        s:
-          rand(200,1600) | 0
-      });
-    }
-
-    entries.sort(
-      (a,b) => b.s - a.s
-    );
-
-    rows.innerHTML =
-      entries.map(
-        e => `
-          <div class="score-row ${
-            e.n === 'YOU'
-              ? 'you'
-              : ''
-          }">
-            <span>${e.n}</span>
-            <span>${e.k}</span>
-            <span>${e.d}</span>
-            <span>${e.s}</span>
-          </div>
-        `
-      ).join('');
-  }
-
-  showWeaponToast(t) {
-    const e =
-      document.getElementById(
-        'weaponToast'
-      );
-
-    e.textContent = t;
-
-    e.classList.add(
-      'toast-on'
-    );
-
-    clearTimeout(
-      this.toastT
-    );
-
-    this.toastT =
-      setTimeout(
-        () =>
-          e.classList.remove(
-            'toast-on'
-          ),
-        850
-      );
-  }
-
-  endMatch(win) {
-    if (!this.running) {
-      return;
-    }
-
-    this.running = false;
-
-    input.unlock();
-
-    document.getElementById(
-      'matchEnd'
-    ).classList.remove(
-      'hidden'
-    );
-
-    document.getElementById(
-      'winnerText'
-    ).textContent =
-      win
-        ? 'VICTORY'
-        : 'DEFEAT';
-
-    document.getElementById(
-      'finalScore'
-    ).textContent =
-      `${this.teamScore[0]} — ${this.teamScore[1]}`;
-  }
-
-  resize() {
-    this.camera.aspect =
-      innerWidth / innerHeight;
-
-    this.camera.updateProjectionMatrix();
-
-    this.renderer.setSize(
-      innerWidth,
-      innerHeight
-    );
-  }
-
-  update(dt) {
-    if (!this.running) {
-      return;
-    }
-
-    if (
-      input.pressed('Escape')
-    ) {
-      this.paused =
-        !this.paused;
-
-      document.getElementById(
-        'pause'
-      ).classList.toggle(
-        'hidden',
-        !this.paused
-      );
-
-      if (this.paused) {
-        input.unlock();
-      } else {
-        input.lock();
-      }
-    }
-
-    if (this.paused) {
-      return;
-    }
-
-    if (
-      input.pressed('Tab')
-    ) {
-      document.getElementById(
-        'scoreboard'
-      ).classList.remove(
-        'hidden'
-      );
-
-      this.updateScoreboard();
-
-    } else if (
-      !input.down('Tab')
-    ) {
-      document.getElementById(
-        'scoreboard'
-      ).classList.add(
-        'hidden'
-      );
-    }
-
-    if (
-      input.pressed('KeyQ')
-    ) {
-      this.weapon.switchCategory(
-        1
-      );
-    }
-
-    if (
-      input.pressed('Digit1')
-    ) {
-      this.weapon.equip(
-        this.kit.primary
-      );
-    }
-
-    if (
-      input.pressed('Digit2')
-    ) {
-      this.weapon.equip(
-        this.kit.secondary
-      );
-    }
-
-    if (
-      input.pressed('Digit3')
-    ) {
-      this.weapon.equip(
-        'knife'
-      );
-    }
-
-    if (
-      input.pressed('Digit4')
-    ) {
-      this.weapon.equip(
-        this.kit.tactical
-      );
-    }
-
-    if (
-      input.pressed('Digit5')
-    ) {
-      this.weapon.equip(
-        this.kit.lethal
-      );
-    }
-
-    if (
-      input.pressed('KeyR')
-    ) {
-      this.weapon.reload();
-    }
-
-    if (
-      input.pressed('KeyF')
-    ) {
-      this.doMelee();
-    }
-
-    if (
-      input.pressed('KeyG')
-    ) {
-      this.throwGrenade(
-        this.kit.tactical
-      );
-    }
-
-    if (
-      input.pressed('KeyH')
-    ) {
-      this.throwGrenade(
-        this.kit.lethal
-      );
-    }
-
-    if (
-      input.pressed('KeyF3')
-    ) {
-      this.debug =
-        !this.debug;
-
-      document.getElementById(
-        'debug'
-      ).classList.toggle(
-        'hidden',
-        !this.debug
-      );
-    }
-
-    if (
-      input.mouse.buttons & 1
-    ) {
-      this.weapon.fire();
-    }
-
-    this.matchTime -= dt;
-
-    if (
-      this.matchTime <= 0
-    ) {
-      this.endMatch(
-        this.teamScore[0] >=
-        this.teamScore[1]
-      );
-    }
-
-    this.player.update(dt);
-
-    this.playerMesh.position.set(
-      this.player.position.x,
-      this.player.position.y - .72,
-      this.player.position.z
-    );
-
-    this.playerMesh.rotation.y =
-      this.player.yaw;
-
-    this.weapon.update(dt);
-
-    for (
-      const b of this.bots
-    ) {
-      b.update(dt);
-    }
-
-    this.vfx.update(dt);
-
-    document.getElementById(
-      'timer'
-    ).textContent =
-      new Date(
-        this.matchTime * 1000
-      ).toISOString().slice(
-        14,
-        19
-      );
-
-    this.updateDebug(dt);
-  }
-
-  doMelee() {
-    if (
-      this.weapon.catOf(
-        this.weapon.currentKey
-      ) !== 'melee'
-    ) {
-      this.weapon.equip(
-        'knife'
-      );
-
-      return;
-    }
-
-    const ray =
-      new THREE.Raycaster();
-
-    ray.setFromCamera(
-      new THREE.Vector2(0,0),
-      this.camera
-    );
-
-    for (
-      const b of this.bots.filter(
-        x => x.alive
-      )
-    ) {
-      const h =
-        ray.intersectObjects(
-          b.hitMeshes,
-          false
-        )[0];
-
-      if (
-        h &&
-        h.distance < 2.6
-      ) {
-        const killed =
-          b.takeDamage(
-            70,
-            this.player
-          );
-
-        this.hitFeedback(
-          h.object.userData.part === 'head',
-          killed
-        );
-
-        break;
-      }
-    }
-  }
-
-  throwGrenade(type) {
-    const g =
-      ModelFactory.grenade(
+    const grenade =
+      Models.grenade(
         type
       );
 
-    const pos =
+    grenade.position.copy(
       this.player.position
         .clone()
         .add(
           new THREE.Vector3(
             0,
-            .4,
+            .45,
             0
           )
-        );
+        )
+    );
 
-    g.position.copy(pos);
+    this.scene.add(
+      grenade
+    );
 
-    this.scene.add(g);
-
-    const dir =
+    const direction =
       new THREE.Vector3(
         0,
         0,
@@ -4072,9 +4983,11 @@ class Game {
         )
         .normalize();
 
-    g.userData.vel =
-      dir
-        .multiplyScalar(13)
+    grenade.userData.velocity =
+      direction
+        .multiplyScalar(
+          13
+        )
         .add(
           new THREE.Vector3(
             0,
@@ -4083,139 +4996,522 @@ class Game {
           )
         );
 
-    g.userData.t =
+    grenade.userData.timer =
       type === 'flash'
         ? .9
-        : (
-          type === 'smoke'
-            ? 2
-            : 1.4
+        : type === 'smoke'
+          ? 2
+          : 1.4;
+
+    const update =
+      () => {
+
+        if (
+          !grenade.parent
+        ) {
+          return;
+        }
+
+        grenade.userData.timer -=
+          .033;
+
+        grenade.userData.velocity.y -=
+          9 * .033;
+
+        grenade.position.addScaledVector(
+          grenade.userData.velocity,
+          .033
         );
 
-    g.userData.type =
-      type;
+        if (
+          grenade.position.y <
+          .15
+        ) {
 
-    const tick = () => {
-      if (!g.parent) {
-        return;
-      }
+          grenade.position.y =
+            .15;
 
-      g.userData.t -=
-        .033;
+          grenade.userData.velocity.y *=
+            -.45;
 
-      g.userData.vel.y -=
-        9 * .033;
+          grenade.userData.velocity.x *=
+            .78;
 
-      g.position.addScaledVector(
-        g.userData.vel,
-        .033
-      );
+          grenade.userData.velocity.z *=
+            .78;
+        }
 
-      if (
-        g.position.y < .15
-      ) {
-        g.position.y = .15;
+        grenade.rotation.x +=
+          .12;
 
-        g.userData.vel.y *=
-          -.45;
+        if (
+          grenade.userData.timer <=
+          0
+        ) {
 
-        g.userData.vel.x *=
-          .78;
+          this.explodeGrenade(
+            grenade
+          );
 
-        g.userData.vel.z *=
-          .78;
-      }
+          return;
+        }
 
-      if (
-        g.userData.t <= 0
-      ) {
-        this.explode(g);
-        return;
-      }
+        requestAnimationFrame(
+          update
+        );
+      };
 
-      requestAnimationFrame(
-        tick
-      );
-    };
-
-    tick();
+    update();
   }
 
-  explode(g) {
-    const pos =
-      g.position.clone();
+  explodeGrenade(
+    grenade
+  ) {
 
-    this.scene.remove(g);
+    const position =
+      grenade.position.clone();
 
-    audio.explosion();
+    const type =
+      grenade.userData.type ||
+      'frag';
+
+    this.scene.remove(
+      grenade
+    );
+
+    this.vfx.explosion(
+      position
+    );
 
     const radius =
-      typeRadius(
-        g.userData.type
-      );
+      [
+        'frag',
+        'impact',
+        'incendiary'
+      ].includes(type)
+        ? 6
+        : 4.5;
 
     for (
-      const b of this.bots.filter(
-        x => x.alive
+      const bot of
+      this.bots.filter(
+        b => b.alive
       )
     ) {
-      const d =
-        b.group.position.distanceTo(
-          pos
+
+      const distance =
+        bot.group.position.distanceTo(
+          position
         );
 
-      if (d < radius) {
-        b.takeDamage(
+      if (
+        distance < radius
+      ) {
+
+        bot.takeDamage(
           (
-            1 - d / radius
+            1 -
+            distance / radius
           ) * 100,
           this.player
         );
       }
     }
+  }
 
-    for (
-      let i = 0;
-      i < 18;
-      i++
+  updateScore() {
+
+    $('scoreMini')
+      .textContent =
+      `${this.teamScore[0]} — ${this.teamScore[1]}`;
+
+    if (
+      this.teamScore[0] >= 30
     ) {
-      const p =
-        ModelFactory.box(
-          .07,
-          .07,
-          .07,
-          0xffa34a,
-          .7,
-          .1
-        );
 
-      p.position.copy(pos);
-
-      p.userData.vel =
-        new THREE.Vector3(
-          rand(-4,4),
-          rand(1,5),
-          rand(-4,4)
-        );
-
-      this.scene.add(p);
-
-      this.vfx.particles.push({
-        obj: p,
-        t: .7
-      });
+      this.endMatch(
+        true
+      );
     }
   }
 
-  updateDebug(dt) {
-    if (!this.debug) {
+  updateScoreboard() {
+
+    const rows =
+      $('scoreRows');
+
+    const entries = [
+      {
+        name:'YOU',
+        kills:this.stats.kills,
+        deaths:this.stats.deaths,
+        score:this.stats.kills * 100
+      }
+    ];
+
+    for (
+      const bot of
+      this.bots
+    ) {
+
+      entries.push({
+        name:bot.codename(),
+        kills:
+          Math.floor(
+            rand(1,16)
+          ),
+        deaths:
+          Math.floor(
+            rand(1,14)
+          ),
+        score:
+          Math.floor(
+            rand(200,1700)
+          )
+      });
+    }
+
+    entries.sort(
+      (a,b) =>
+        b.score -
+        a.score
+    );
+
+    rows.innerHTML =
+      entries.map(
+        entry => `
+          <div class="score-row ${
+            entry.name === 'YOU'
+              ? 'you'
+              : ''
+          }">
+
+            <span>${entry.name}</span>
+            <span>${entry.kills}</span>
+            <span>${entry.deaths}</span>
+            <span>${entry.score}</span>
+
+          </div>
+        `
+      ).join('');
+  }
+
+  endMatch(
+    victory
+  ) {
+
+    if (
+      !this.running
+    ) {
       return;
     }
 
-    document.getElementById(
-      'debug'
-    ).textContent =
-      `FPS ${(1 / dt).toFixed(0)}
+    this.running =
+      false;
+
+    input.unlock();
+
+    $('capture')
+      .classList.add(
+        'hidden'
+      );
+
+    $('matchEnd')
+      .classList.remove(
+        'hidden'
+      );
+
+    $('winnerText')
+      .textContent =
+      victory
+        ? 'VICTORY'
+        : 'DEFEAT';
+
+    $('finalScore')
+      .textContent =
+      `${this.teamScore[0]} — ${this.teamScore[1]}`;
+  }
+
+  resize() {
+
+    this.camera.aspect =
+      innerWidth /
+      innerHeight;
+
+    this.camera.updateProjectionMatrix();
+
+    this.renderer.setSize(
+      innerWidth,
+      innerHeight
+    );
+  }
+
+  update(
+    dt
+  ) {
+
+    if (
+      !this.running
+    ) {
+      return;
+    }
+
+    if (
+      input.pressed(
+        'Escape'
+      )
+    ) {
+
+      this.paused =
+        !this.paused;
+
+      $('pause')
+        .classList.toggle(
+          'hidden',
+          !this.paused
+        );
+
+      if (
+        this.paused
+      ) {
+
+        input.unlock();
+
+      } else {
+
+        input.lock();
+      }
+    }
+
+    if (
+      this.paused
+    ) {
+      return;
+    }
+
+    if (
+      input.pressed(
+        'KeyQ'
+      )
+    ) {
+
+      this.weapon.cycle();
+    }
+
+    if (
+      input.pressed(
+        'Digit1'
+      )
+    ) {
+
+      this.weapon.equip(
+        this.kit.primary
+      );
+    }
+
+    if (
+      input.pressed(
+        'Digit2'
+      )
+    ) {
+
+      this.weapon.equip(
+        this.kit.secondary
+      );
+    }
+
+    if (
+      input.pressed(
+        'Digit3'
+      )
+    ) {
+
+      this.weapon.equip(
+        'knife'
+      );
+    }
+
+    if (
+      input.pressed(
+        'Digit4'
+      )
+    ) {
+
+      this.weapon.equip(
+        this.kit.tactical
+      );
+    }
+
+    if (
+      input.pressed(
+        'Digit5'
+      )
+    ) {
+
+      this.weapon.equip(
+        this.kit.lethal
+      );
+    }
+
+    if (
+      input.pressed(
+        'KeyR'
+      )
+    ) {
+
+      this.weapon.reload();
+    }
+
+    if (
+      input.pressed(
+        'KeyF'
+      )
+    ) {
+
+      this.weapon.melee();
+    }
+
+    if (
+      input.pressed(
+        'KeyG'
+      )
+    ) {
+
+      this.throwGrenade(
+        this.kit.tactical
+      );
+    }
+
+    if (
+      input.pressed(
+        'KeyH'
+      )
+    ) {
+
+      this.throwGrenade(
+        this.kit.lethal
+      );
+    }
+
+    if (
+      input.pressed(
+        'KeyI'
+      )
+    ) {
+
+      this.weapon.inspect();
+    }
+
+    if (
+      input.pressed(
+        'F3'
+      )
+    ) {
+
+      this.debug =
+        !this.debug;
+
+      $('debug')
+        .classList.toggle(
+          'hidden',
+          !this.debug
+        );
+    }
+
+    if (
+      input.pressed(
+        'Tab'
+      )
+    ) {
+
+      $('scoreboard')
+        .classList.remove(
+          'hidden'
+        );
+
+      this.updateScoreboard();
+
+    } else if (
+      !input.down(
+        'Tab'
+      )
+    ) {
+
+      $('scoreboard')
+        .classList.add(
+          'hidden'
+        );
+    }
+
+    if (
+      input.mouse.buttons & 1
+    ) {
+
+      this.weapon.fire();
+    }
+
+    this.matchTime -=
+      dt;
+
+    if (
+      this.matchTime <= 0
+    ) {
+
+      this.endMatch(
+        this.teamScore[0] >=
+        this.teamScore[1]
+      );
+
+      return;
+    }
+
+    this.player.update(
+      dt
+    );
+
+    this.weapon.update(
+      dt
+    );
+
+    for (
+      const bot of
+      this.bots
+    ) {
+
+      bot.update(
+        dt
+      );
+    }
+
+    this.vfx.update(
+      dt
+    );
+
+    const minutes =
+      Math.floor(
+        this.matchTime / 60
+      );
+
+    const seconds =
+      Math.floor(
+        this.matchTime % 60
+      );
+
+    $('timer')
+      .textContent =
+      `${String(minutes).padStart(
+        2,'0'
+      )}:${String(seconds).padStart(
+        2,'0'
+      )}`;
+
+    if (
+      this.debug
+    ) {
+
+      $('debug')
+        .textContent =
+        `FPS ${(1/dt).toFixed(0)}
 POS ${this.player.position.x.toFixed(1)}, ${this.player.position.y.toFixed(1)}, ${this.player.position.z.toFixed(1)}
 VEL ${this.player.velocity.length().toFixed(2)}
 WEAPON ${this.weapon.currentKey}
@@ -4224,80 +5520,98 @@ AMMO ${
     ? `${this.weapon.ammo[this.weapon.currentKey].mag}/${this.weapon.ammo[this.weapon.currentKey].reserve}`
     : 'N/A'
 }
-BOTS ${this.bots.filter(b => b.alive).length}`;
+BOTS ${this.bots.filter(
+  b => b.alive
+).length}`;
+    }
   }
 
-  loop(now) {
+  loop(
+    now
+  ) {
+
     const dt =
       Math.min(
         .033,
-        (now - this.last) / 1000
+        (now - this.lastTime) /
+        1000
       );
 
-    this.last = now;
+    this.lastTime =
+      now;
 
-    this.update(dt);
+    this.update(
+      dt
+    );
 
     this.renderer.render(
       this.scene,
       this.camera
     );
 
-    input.consume();
+    input.clearFrame();
 
     requestAnimationFrame(
-      n => this.loop(n)
+      time =>
+        this.loop(
+          time
+        )
     );
   }
-}
-
-function typeRadius(type) {
-  return (
-    type === 'frag' ||
-    type === 'impact' ||
-    type === 'incendiary'
-  )
-    ? 6
-    : (
-      type === 'stun' ||
-      type === 'emp'
-        ? 4.5
-        : 4
-    );
 }
 
 let game;
 
 try {
-  game = new Game();
 
-  bootStatus.textContent =
-    'Loading tactical systems…';
+  $('bootStatus')
+    .textContent =
+    'LOADING WEBGL COMBAT SYSTEMS...';
 
-  setTimeout(() => {
-    bootStatus.textContent =
-      'Ready';
+  game =
+    new Game();
 
-    boot.style.opacity = '0';
-    boot.style.pointerEvents =
-      'none';
+  setTimeout(
+    () => {
 
-    setTimeout(() => {
-      boot.remove();
-      app.classList.remove(
-        'hidden'
+      $('bootStatus')
+        .textContent =
+        'READY';
+
+      $('boot').style.opacity =
+        '0';
+
+      setTimeout(
+        () => {
+          $('boot').remove();
+        },
+        400
       );
-    }, 450);
 
-  }, 500);
-
-  requestAnimationFrame(
-    t => game.loop(t)
+    },
+    650
   );
 
-} catch (err) {
-  console.error(err);
+  window.addEventListener(
+    'resize',
+    () =>
+      game.resize()
+  );
 
-  bootStatus.textContent =
-    'Renderer error — see console';
+  requestAnimationFrame(
+    time =>
+      game.loop(time)
+  );
+
+} catch (
+  error
+) {
+
+  console.error(
+    error
+  );
+
+  $('bootStatus')
+    .textContent =
+    'INITIALIZATION ERROR — OPEN CONSOLE';
 }
