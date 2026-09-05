@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Frontline // Browser FPS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="boot"><div class="boot-card"><div class="brand">FRONTLINE</div><div id="bootStatus">Initializing renderer…</div><div class="boot-bar"><span></span></div></div></div>
+
+  <main id="app" class="hidden">
+    <canvas id="game"></canvas>
+
+    <section id="menu" class="screen active">
+      <div class="menu-scrim"></div>
+      <div class="menu-panel">
+        <div class="kicker">ORIGINAL WEB FPS // BUILD 01</div>
+        <h1>FRONTLINE</h1>
+        <p class="tag">Fast, tactical, browser-native combat.</p>
+        <div class="menu-actions">
+          <button data-action="play" class="primary">PLAY</button>
+          <button data-action="loadout">LOADOUT</button>
+          <button data-action="armory">ARMORY</button>
+          <button data-action="settings">SETTINGS</button>
+          <button data-action="controls">CONTROLS</button>
+        </div>
+        <div class="menu-footer">WASD MOVE • SHIFT SPRINT • CTRL CROUCH • SPACE JUMP • RMB ADS • LMB FIRE • Q CYCLE • TAB SCOREBOARD</div>
+      </div>
+    </section>
+
+    <section id="loadout" class="screen">
+      <div class="modal">
+        <div class="modal-head"><div><div class="kicker">LOADOUT</div><h2>Field Kit</h2></div><button data-action="back">BACK</button></div>
+        <div class="loadout-grid" id="loadoutGrid"></div>
+        <div class="loadout-note">Your selected kit is used when the next match starts.</div>
+      </div>
+    </section>
+
+    <section id="armory" class="screen">
+      <div class="modal armory-modal">
+        <div class="modal-head"><div><div class="kicker">ARMORY</div><h2 id="armoryTitle">Weapon</h2></div><button data-action="back">BACK</button></div>
+        <div class="armory-body"><div id="armoryPreview"></div><div class="stat-column" id="armoryStats"></div></div>
+        <div class="weapon-tabs" id="weaponTabs"></div>
+      </div>
+    </section>
+
+    <section id="settings" class="screen">
+      <div class="modal narrow">
+        <div class="modal-head"><div><div class="kicker">SETTINGS</div><h2>Configuration</h2></div><button data-action="back">BACK</button></div>
+        <div class="settings-grid">
+          <label>Mouse sensitivity <input id="sens" type="range" min="0.2" max="2.5" step="0.05"></label>
+          <label>ADS sensitivity <input id="adsSens" type="range" min="0.2" max="2.0" step="0.05"></label>
+          <label>Field of view <input id="fov" type="range" min="70" max="105" step="1"></label>
+          <label>Master volume <input id="masterVol" type="range" min="0" max="1" step="0.02"></label>
+          <label>Graphics <select id="quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+          <label>Invert mouse <input id="invert" type="checkbox"></label>
+          <label>Motion blur <input id="motion" type="checkbox"></label>
+          <label>VSync-style frame pacing <input id="vsync" type="checkbox"></label>
+        </div>
+        <div class="settings-note">Settings persist locally. Graphics options tune shadow and particle load.</div>
+      </div>
+    </section>
+
+    <section id="controls" class="screen">
+      <div class="modal narrow"><div class="modal-head"><div><div class="kicker">CONTROLS</div><h2>Keyboard & Mouse</h2></div><button data-action="back">BACK</button></div>
+        <div class="control-list">
+          <div><b>W A S D</b><span>Move</span></div><div><b>SHIFT</b><span>Sprint</span></div><div><b>CTRL</b><span>Crouch</span></div><div><b>SPACE</b><span>Jump</span></div><div><b>LMB</b><span>Fire</span></div><div><b>RMB</b><span>Aim Down Sights</span></div><div><b>R</b><span>Reload</span></div><div><b>F</b><span>Melee</span></div><div><b>G / H</b><span>Tactical / Lethal</span></div><div><b>Q</b><span>Cycle equipment</span></div><div><b>1–5</b><span>Direct equipment slots</span></div><div><b>TAB</b><span>Scoreboard</span></div><div><b>F3</b><span>Debug overlay</span></div><div><b>ESC</b><span>Pause / release cursor</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pause" class="overlay"><div class="pause-card"><div class="kicker">PAUSED</div><h2>Mission suspended</h2><button data-action="resume" class="primary">RESUME</button><button data-action="mainMenu">MAIN MENU</button></div></section>
+
+    <section id="hud" class="hidden">
+      <div class="hud-top"><div id="objective">SECTOR // KILL ORDER</div><div id="timer">10:00</div><div id="scoreMini">0 — 0</div></div>
+      <div id="killFeed" class="kill-feed"></div>
+      <div id="damageVignette"></div>
+      <div id="damageDir"></div>
+      <div id="hitmarker">✦</div>
+      <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+      <div id="weaponToast"></div>
+      <div id="hud-bottom"><div class="health"><div class="health-value" id="healthValue">100</div><div class="health-bar"><span id="healthBar"></span></div></div><div class="ammo"><div class="ammo-main" id="ammoMain">30</div><div class="ammo-reserve" id="ammoReserve">90</div><div class="weapon-name" id="weaponName">CARBINE</div></div></div>
+      <div id="scoreboard" class="scoreboard hidden"><div class="score-head"><span>PLAYER</span><span>K</span><span>D</span><span>SCORE</span></div><div id="scoreRows"></div></div>
+      <div id="debug" class="debug hidden"></div>
+      <div id="interactHint"></div>
+    </section>
+
+    <section id="death" class="overlay hidden"><div class="death-card"><div class="kicker">KIA</div><h2 id="deathTitle">ELIMINATED</h2><div id="deathStats">Respawning…</div></div></section>
+
+    <section id="matchEnd" class="overlay hidden"><div class="pause-card"><div class="kicker">MATCH COMPLETE</div><h2 id="winnerText">VICTORY</h2><div id="finalScore">0 — 0</div><button data-action="play" class="primary">PLAY AGAIN</button><button data-action="mainMenu">MAIN MENU</button></div></section>
+  </main>
+
+  <script type="importmap">
+    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/"}}
+  </script>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
